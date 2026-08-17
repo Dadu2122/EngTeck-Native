@@ -118,7 +118,7 @@ fun HelpDeskCard() {
         }
 
         Spacer(Modifier.height(20.dp))
-        Text("Hello, dear Student, कैसे हैं आप?", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
+        Text("Hello, dear Student, how are you?", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(
             value = feedback,
@@ -131,17 +131,17 @@ fun HelpDeskCard() {
         Button(
             onClick = {
                 if (feedback.isBlank()) {
-                    feedbackStatus = "Kuch likhein pehle"
+                    feedbackStatus = "Please write something first"
                     return@Button
                 }
                 FirebaseDatabase.getInstance().getReference("helpFeedback").push()
                     .setValue(mapOf("text" to feedback, "timestamp" to System.currentTimeMillis()))
                     .addOnSuccessListener {
-                        feedbackStatus = "Feedback bhej diya ✓"
+                        feedbackStatus = "Feedback sent ✓"
                         feedback = ""
                     }
                     .addOnFailureListener {
-                        feedbackStatus = "Kuch galat hua, dobara try karein"
+                        feedbackStatus = "Something went wrong, please try again"
                     }
             },
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE85D4C)),
