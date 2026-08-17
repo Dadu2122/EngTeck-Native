@@ -70,6 +70,10 @@ fun HomeScreen(teacherName: String) {
                         DemoVideoCard()
                         SelectedAspirantsCard()
                         AreasCoveredCard()
+                        PricingCard()
+                        SyllabusPdfCard()
+                        InquiryFormCard()
+                        MiniBooksScreen(onBookClick = { _, _ -> })
                     }
                 }
                 1 -> Box(Modifier.fillMaxSize().padding(20.dp)) {
