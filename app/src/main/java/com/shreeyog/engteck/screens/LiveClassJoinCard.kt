@@ -109,14 +109,14 @@ fun LiveClassJoinCard() {
             Button(
                 onClick = {
                     if (name.isBlank() || mobile.length != 10) {
-                        joinMsg = "Naam aur 10-digit mobile number daalein"
+                        joinMsg = "Please enter your name and a 10-digit mobile number"
                         return@Button
                     }
                     if (!isLive) {
-                        joinMsg = "Abhi class live nahi hai — teacher ke shuru karne ka wait karein"
+                        joinMsg = "Class is not live right now — please wait for the teacher to start"
                         return@Button
                     }
-                    joinMsg = "Join request bheji ja rahi hai... (Live video system jald hi aayega)"
+                    joinMsg = "Sending join request... (Live video system coming soon)"
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE85D4C)),
                 shape = RoundedCornerShape(14.dp),
