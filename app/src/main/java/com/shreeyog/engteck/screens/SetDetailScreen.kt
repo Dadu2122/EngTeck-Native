@@ -25,11 +25,11 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
             .get()
             .addOnSuccessListener { snapshot ->
                 loading = false
-                questionsRaw = snapshot.getValue(String::class.java) ?: "Abhi content upload nahi hua hai."
+                questionsRaw = snapshot.getValue(String::class.java) ?: "No content uploaded yet."
             }
             .addOnFailureListener {
                 loading = false
-                questionsRaw = "Content load nahi ho paaya."
+                questionsRaw = "Could not load content."
             }
     }
 
