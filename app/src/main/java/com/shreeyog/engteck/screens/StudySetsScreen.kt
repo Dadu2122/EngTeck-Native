@@ -79,3 +79,36 @@ fun StudySetsScreen(
         }
     }
 }
+@Composable
+fun StudyTabRoot() {
+    var selectedCat by remember { mutableStateOf<StudyCategory?>(null) }
+    var selectedSet by remember { mutableStateOf<StudySetItem?>(null) }
+
+    when {
+        selectedCat == null -> {
+            StudyScreen(onCategoryClick = { key, label ->
+                selectedCat = StudyCategory(key, label)
+            })
+        }
+        selectedSet == null -> {
+            Column(Modifier.fillMaxSize()) {
+                TextButton(onClick = { selectedCat = null }) { Text("‹ Back") }
+                StudySetsScreen(
+                    catKey = selectedCat!!.key,
+                    catLabel = selectedCat!!.label,
+                    onSetClick = { key, title -> selectedSet = StudySetItem(key, title) }
+                )
+            }
+        }
+        else -> {
+            Column(Modifier.fillMaxSize()) {
+                TextButton(onClick = { selectedSet = null }) { Text("‹ Back") }
+                SetDetailScreen(
+                    catKey = selectedCat!!.key,
+                    setKey = selectedSet!!.key,
+                    setTitle = selectedSet!!.title
+                )
+            }
+        }
+    }
+}
