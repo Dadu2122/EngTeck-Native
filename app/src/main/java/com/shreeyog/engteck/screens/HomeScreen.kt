@@ -59,31 +59,42 @@ fun HomeScreen(teacherName: String) {
                 .padding(padding)
         ) {
             when (selectedTab) {
-                0 -> Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    Column {
-                        CoverScreen()
-                        TeacherProfileCard()
-                        DemoVideoCard()
-                        SelectedAspirantsCard()
-                        AreasCoveredCard()
-                        PricingCard()
-                        SyllabusPdfCard()
-                        InquiryFormCard()
-                        MiniBooksScreen(onBookClick = { _: String, _: String -> })
-                        RegistrationFormCard()
-                        QuestionPapersCard()
-                        OfficialCutoffsCard()
-                        ExpectedCutoffsCard()
-                        LiveClassJoinCard()
-                        VideoLibraryCard()
-                        ClassRecordingsCard()
-                        PaidPdfLibraryCard()
-                        AiTutorCard()
-                        HelpDeskCard()
+                0 -> {
+                    var selectedBook by remember { mutableStateOf<Pair<String, String>?>(null) }
+                    if (selectedBook != null) {
+                        MiniBookReaderScreen(
+                            bookKey = selectedBook!!.first,
+                            title = selectedBook!!.second,
+                            onBack = { selectedBook = null }
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Column {
+                                CoverScreen()
+                                TeacherProfileCard()
+                                DemoVideoCard()
+                                SelectedAspirantsCard()
+                                AreasCoveredCard()
+                                PricingCard()
+                                SyllabusPdfCard()
+                                InquiryFormCard()
+                                MiniBooksScreen(onBookClick = { key, title -> selectedBook = key to title })
+                                RegistrationFormCard()
+                                QuestionPapersCard()
+                                OfficialCutoffsCard()
+                                ExpectedCutoffsCard()
+                                LiveClassJoinCard()
+                                VideoLibraryCard()
+                                ClassRecordingsCard()
+                                PaidPdfLibraryCard()
+                                AiTutorCard()
+                                HelpDeskCard()
+                            }
+                        }
                     }
                 }
                 1 -> Box(Modifier.fillMaxSize().padding(20.dp)) {
