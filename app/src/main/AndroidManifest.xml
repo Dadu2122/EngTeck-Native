@@ -3,7 +3,7 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
+    
         android:label="EngTeck"
         android:theme="@style/Theme.EngTeck"
         android:usesCleartextTraffic="false">
