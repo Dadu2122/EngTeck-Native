@@ -113,7 +113,7 @@ fun InquiryFormCard() {
             OutlinedTextField(
                 value = query,
                 onValueChange = { if (it.length <= 800) query = it },
-                placeholder = { Text("अपना सवाल यहाँ लिखो (max 100 words)") },
+                placeholder = { Text("Write your question here (max 100 words)") },
                 modifier = Modifier.fillMaxWidth().height(100.dp),
                 shape = RoundedCornerShape(12.dp)
             )
@@ -129,7 +129,7 @@ fun InquiryFormCard() {
             Button(
                 onClick = {
                     if (name.isBlank() || state.isBlank() || district.isBlank() || mobile.isBlank() || exam.isBlank() || query.isBlank()) {
-                        statusMsg = "Sabhi zaroori fields bharen"
+                        statusMsg = "Please fill all required fields"
                         return@Button
                     }
                     submitting = true
@@ -142,12 +142,12 @@ fun InquiryFormCard() {
                     FirebaseDatabase.getInstance().getReference("inquiries").push().setValue(entry)
                         .addOnSuccessListener {
                             submitting = false
-                            statusMsg = "Inquiry submit ho gayi ✓"
+                            statusMsg = "Inquiry submitted ✓"
                             name = ""; state = ""; district = ""; mobile = ""; email = ""; exam = ""; query = ""
                         }
                         .addOnFailureListener {
                             submitting = false
-                            statusMsg = "Kuch galat hua, dobara try karein"
+                            statusMsg = "Something went wrong, please try again"
                         }
                 },
                 enabled = !submitting,
