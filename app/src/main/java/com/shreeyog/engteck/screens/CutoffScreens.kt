@@ -56,7 +56,7 @@ fun QuestionPapersCard() {
         Spacer(Modifier.height(10.dp))
         val years = (data[activeCat] ?: emptyMap()).keys.sortedDescending()
         if (years.isEmpty()) {
-            EmptyNote("अभी कोई paper upload नहीं हुआ इस category में।")
+            EmptyNote("No papers uploaded yet in this category.")
         } else {
             years.forEach { year ->
                 var expanded by remember(year, activeCat) { mutableStateOf(false) }
@@ -82,7 +82,7 @@ fun QuestionPapersCard() {
                         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)) {
                             val papers = data[activeCat]?.get(year) ?: emptyList()
                             if (papers.isEmpty()) {
-                                EmptyNote("इस साल के लिए अभी कोई paper नहीं।")
+                                EmptyNote("No papers available for this year.")
                             } else {
                                 papers.forEach { paper ->
                                     Row(
@@ -163,7 +163,7 @@ private fun CutoffCardBase(firebasePath: String, icon: String, title: String, ba
         Spacer(Modifier.height(10.dp))
         val years = (data[activeCat] ?: emptyMap()).keys.sortedDescending()
         if (years.isEmpty()) {
-            EmptyNote("अभी data नहीं भरा गया इस category में।")
+            EmptyNote("No data entered yet for this category.")
         } else {
             years.forEach { year ->
                 val row = data[activeCat]?.get(year) ?: emptyMap()
