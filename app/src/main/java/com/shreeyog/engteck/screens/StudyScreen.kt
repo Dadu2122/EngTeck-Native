@@ -50,7 +50,7 @@ fun StudyScreen(onCategoryClick: (catKey: String, label: String) -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
         Text("Study Material", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = NavyDeep)
         Spacer(Modifier.height(4.dp))
-        Text("Apni category chunein", fontSize = 13.sp, color = InkSoft)
+        Text("Select your category", fontSize = 13.sp, color = InkSoft)
         Spacer(Modifier.height(16.dp))
 
         if (loading) {
