@@ -1,4 +1,3 @@
-import androidx.compose.ui.text.withStyle
 package com.shreeyog.engteck.screens
 
 import androidx.compose.foundation.background
@@ -10,6 +9,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -67,7 +69,7 @@ fun InquiryFormCard() {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color.White, RoundedCornerShape(0.dp))
+                .background(Color.White)
                 .border(1.5.dp, Color(0xFFD4A017))
                 .padding(18.dp)
         ) {
@@ -85,7 +87,7 @@ fun InquiryFormCard() {
             FormField("Email", false, email, keyboardType = androidx.compose.ui.text.input.KeyboardType.Email) { email = it }
             Spacer(Modifier.height(14.dp))
 
-            Text(buildAnnotatedRequired("Select Exam"), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
+            Text(buildRequiredLabel("Select Exam"), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
             Spacer(Modifier.height(6.dp))
             Box {
                 OutlinedButton(
@@ -106,7 +108,7 @@ fun InquiryFormCard() {
             }
             Spacer(Modifier.height(14.dp))
 
-            Text(buildAnnotatedRequired("Write Your Full Query"), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
+            Text(buildRequiredLabel("Write Your Full Query"), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
             Spacer(Modifier.height(6.dp))
             OutlinedTextField(
                 value = query,
@@ -172,7 +174,7 @@ private fun FormField(
     onChange: (String) -> Unit
 ) {
     Column {
-        Text(buildAnnotatedRequired(label, required), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
+        Text(buildRequiredLabel(label, required), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
         Spacer(Modifier.height(6.dp))
         OutlinedTextField(
             value = value,
@@ -185,13 +187,11 @@ private fun FormField(
     }
 }
 
-private fun buildAnnotatedRequired(label: String, required: Boolean = true): androidx.compose.ui.text.AnnotatedString {
-    return androidx.compose.ui.text.buildAnnotatedString {
-        append(label)
-        if (required) {
-            withStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFFE85D4C), fontWeight = FontWeight.ExtraBold)) {
-                append(" *")
-            }
+private fun buildRequiredLabel(label: String, required: Boolean = true) = buildAnnotatedString {
+    append(label)
+    if (required) {
+        withStyle(SpanStyle(color = Color(0xFFE85D4C), fontWeight = FontWeight.ExtraBold)) {
+            append(" *")
         }
     }
 }
