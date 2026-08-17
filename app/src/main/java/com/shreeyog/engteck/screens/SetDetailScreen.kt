@@ -3,7 +3,6 @@ package com.shreeyog.engteck.screens
 import android.content.ContentValues
 import android.graphics.Color as AColor
 import android.graphics.Paint
-import android.graphics.RectF
 import android.graphics.pdf.PdfDocument
 import android.os.Build
 import android.os.Environment
@@ -60,7 +59,6 @@ private fun parseQuestions(raw: String): List<ParsedQuestion> {
     }
 }
 
-// Wraps text to fit within maxWidth, returns list of lines
 private fun wrapText(text: String, paint: Paint, maxWidth: Float): List<String> {
     val words = text.split(" ")
     val lines = mutableListOf<String>()
@@ -90,7 +88,9 @@ private fun buildPdfDocument(title: String, questions: List<ParsedQuestion>): Pd
     val subtitlePaint = Paint().apply { color = AColor.argb(200, 255, 255, 255); textSize = 11f }
     val bandPaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
     val goldPaint = Paint().apply { color = AColor.rgb(0xD4, 0xA0, 0x17) }
-    val cardBgPaint = Paint().apply { color = AColor.rgb(0xF5, 0xF3, 0xEC) }
+    val cardBgEven = Paint().apply { color = AColor.WHITE }
+    val cardBgOdd = Paint().apply { color = AColor.rgb(0xF5, 0xF3, 0xEC) }
+    val dividerPaint = Paint().apply { color = AColor.rgb(0xD4, 0xA0, 0x17); strokeWidth = 1.5f }
     val circlePaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
     val circleTextPaint = Paint().apply { color = AColor.WHITE; textSize = 11f; isFakeBoldText = true; textAlign = Paint.Align.CENTER }
     val qPaint = Paint().apply { color = AColor.rgb(0x1A, 0x1A, 0x1A); textSize = 13f; isFakeBoldText = true }
@@ -109,39 +109,37 @@ private fun buildPdfDocument(title: String, questions: List<ParsedQuestion>): Pd
     }
 
     drawHeader()
-    var y = 90f
+    var y = 64f
     val marginBottom = 800f
     val textStartX = leftMargin + 34f
     val textWidth = contentWidth - 34f
 
-    for (q in questions) {
-        // estimate block height first
+    questions.forEachIndexed { index, q ->
         val qLines = wrapText("${q.number}. ${q.question}", qPaint, textWidth)
-        var blockHeight = 14f + (qLines.size * 16f)
+        var blockHeight = 20f + (qLines.size * 16f)
         q.options.forEach { opt ->
             blockHeight += wrapText(opt, optPaint, textWidth - 10f).size * 15f
         }
-        if (q.correctAnswer.isNotEmpty()) blockHeight += 16f
-        blockHeight += 16f
+        if (q.correctAnswer.isNotEmpty()) blockHeight += 18f
+        blockHeight += 12f
 
         if (y + blockHeight > marginBottom) {
             document.finishPage(page)
             pageNumber++
             page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
             canvas = page.canvas
-            y = 30f
+            y = 24f
         }
 
         val cardTop = y
-        // draw full-bleed card background (edge to edge)
-        canvas.drawRect(0f, cardTop, pageWidth.toFloat(), cardTop + blockHeight, cardBgPaint)
+        val bandPaintToUse = if (index % 2 == 0) cardBgEven else cardBgOdd
+        canvas.drawRect(0f, cardTop, pageWidth.toFloat(), cardTop + blockHeight, bandPaintToUse)
 
-        // number circle
-        val circleCy = cardTop + 20f
+        val circleCy = cardTop + 22f
         canvas.drawCircle(leftMargin + 11f, circleCy, 11f, circlePaint)
         canvas.drawText(q.number, leftMargin + 11f, circleCy + 4f, circleTextPaint)
 
-        var lineY = cardTop + 18f
+        var lineY = cardTop + 20f
         qLines.forEachIndexed { idx, line ->
             canvas.drawText(line, textStartX, lineY, qPaint)
             lineY += 16f
@@ -160,6 +158,8 @@ private fun buildPdfDocument(title: String, questions: List<ParsedQuestion>): Pd
             lineY += 3f
             canvas.drawText("Correct Answer: ${q.correctAnswer}", textStartX + 10f, lineY, ansPaint)
         }
+
+        canvas.drawLine(0f, cardTop + blockHeight, pageWidth.toFloat(), cardTop + blockHeight, dividerPaint)
 
         y = cardTop + blockHeight
     }
