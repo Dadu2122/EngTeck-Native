@@ -63,12 +63,17 @@ fun JoinCodeScreen(onValidCode: (joinCode: String, teacherName: String) -> Unit)
                 }
                 loading = true
                 error = null
+                // Actual structure: teachers/{anyKey}/joinCode field ko match karo
                 val db = FirebaseDatabase.getInstance()
-                db.getReference("teachers").child(code).child("profile").get()
+                db.getReference("teachers")
+                    .orderByChild("joinCode")
+                    .equalTo(code)
+                    .get()
                     .addOnSuccessListener { snapshot ->
                         loading = false
                         if (snapshot.exists()) {
-                            val teacherName = snapshot.child("name").getValue(String::class.java) ?: "Teacher"
+                            val firstMatch = snapshot.children.first()
+                            val teacherName = firstMatch.child("name").getValue(String::class.java) ?: "Teacher"
                             onValidCode(code, teacherName)
                         } else {
                             error = "Ye Join Code sahi nahi hai"
