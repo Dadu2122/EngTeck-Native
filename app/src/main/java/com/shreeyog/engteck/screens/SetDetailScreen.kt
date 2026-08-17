@@ -1,10 +1,13 @@
 package com.shreeyog.engteck.screens
 
+import android.content.ContentValues
 import android.graphics.Canvas
 import android.graphics.Color as AColor
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
+import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -57,53 +60,78 @@ private fun parseQuestions(raw: String): List<ParsedQuestion> {
     }
 }
 
-private fun generatePdf(context: android.content.Context, title: String, questions: List<ParsedQuestion>): String? {
-    return try {
-        val pageWidth = 595
-        val pageHeight = 842
-        val document = PdfDocument()
-        val titlePaint = Paint().apply { color = AColor.WHITE; textSize = 20f; isFakeBoldText = true }
-        val bandPaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
-        val qPaint = Paint().apply { color = AColor.rgb(0x1A, 0x1A, 0x1A); textSize = 13f; isFakeBoldText = true }
-        val optPaint = Paint().apply { color = AColor.rgb(0x5B, 0x5F, 0x6B); textSize = 12f }
-        val ansPaint = Paint().apply { color = AColor.rgb(0x1F, 0x7A, 0x3D); textSize = 12f; isFakeBoldText = true }
+private fun buildPdfDocument(title: String, questions: List<ParsedQuestion>): PdfDocument {
+    val pageWidth = 595
+    val pageHeight = 842
+    val document = PdfDocument()
+    val titlePaint = Paint().apply { color = AColor.WHITE; textSize = 20f; isFakeBoldText = true }
+    val bandPaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
+    val qPaint = Paint().apply { color = AColor.rgb(0x1A, 0x1A, 0x1A); textSize = 13f; isFakeBoldText = true }
+    val optPaint = Paint().apply { color = AColor.rgb(0x5B, 0x5F, 0x6B); textSize = 12f }
+    val ansPaint = Paint().apply { color = AColor.rgb(0x1F, 0x7A, 0x3D); textSize = 12f; isFakeBoldText = true }
 
-        var pageNumber = 1
-        var page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
-        var canvas = page.canvas
-        canvas.drawRect(0f, 0f, pageWidth.toFloat(), 60f, bandPaint)
-        canvas.drawText(title, 30f, 38f, titlePaint)
-        var y = 90f
-        val marginBottom = 800f
+    var pageNumber = 1
+    var page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+    var canvas = page.canvas
+    canvas.drawRect(0f, 0f, pageWidth.toFloat(), 60f, bandPaint)
+    canvas.drawText(title, 30f, 38f, titlePaint)
+    var y = 90f
+    val marginBottom = 800f
 
-        for (q in questions) {
-            if (y > marginBottom) {
-                document.finishPage(page)
-                pageNumber++
-                page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
-                canvas = page.canvas
-                y = 40f
-            }
-            canvas.drawText("${q.number}. ${q.question}", 30f, y, qPaint)
-            y += 20f
-            q.options.forEach { opt ->
-                canvas.drawText(opt, 45f, y, optPaint)
-                y += 17f
-            }
-            if (q.correctAnswer.isNotEmpty()) {
-                canvas.drawText("Correct Answer: ${q.correctAnswer}", 45f, y, ansPaint)
-                y += 17f
-            }
-            y += 12f
+    for (q in questions) {
+        if (y > marginBottom) {
+            document.finishPage(page)
+            pageNumber++
+            page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+            canvas = page.canvas
+            y = 40f
         }
-        document.finishPage(page)
+        canvas.drawText("${q.number}. ${q.question}", 30f, y, qPaint)
+        y += 20f
+        q.options.forEach { opt ->
+            canvas.drawText(opt, 45f, y, optPaint)
+            y += 17f
+        }
+        if (q.correctAnswer.isNotEmpty()) {
+            canvas.drawText("Correct Answer: ${q.correctAnswer}", 45f, y, ansPaint)
+            y += 17f
+        }
+        y += 12f
+    }
+    document.finishPage(page)
+    return document
+}
 
-        val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+private fun savePdfToDownloads(context: android.content.Context, title: String, questions: List<ParsedQuestion>): String? {
+    return try {
+        val document = buildPdfDocument(title, questions)
         val safeTitle = title.replace(Regex("[^a-zA-Z0-9]"), "_")
-        val file = File(downloadsDir, "$safeTitle.pdf")
-        FileOutputStream(file).use { document.writeTo(it) }
-        document.close()
-        file.absolutePath
+        val fileName = "$safeTitle.pdf"
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { out -> document.writeTo(out) }
+                document.close()
+                "Downloads/$fileName"
+            } else {
+                document.close()
+                null
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val file = File(downloadsDir, fileName)
+            FileOutputStream(file).use { document.writeTo(it) }
+            document.close()
+            file.absolutePath
+        }
     } catch (e: Exception) {
         null
     }
@@ -202,7 +230,7 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                             Spacer(Modifier.width(10.dp))
                             Text(q.question, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
                         }
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(10.dp))
                         Column(modifier = Modifier.padding(start = 36.dp)) {
                             val userSelected = selectedAnswers[q.number]
                             q.options.forEach { opt ->
@@ -227,26 +255,44 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                     isCorrectOption -> Color(0xFF1F7A3D)
                                     else -> Color(0xFF5B5F6B)
                                 }
+                                val borderColor = when {
+                                    showAnswers -> Color(0xFFE3DFD3)
+                                    bgColor == Color.Transparent -> Color(0xFFCFCAC0)
+                                    else -> textColor
+                                }
+                                val boxBg = when {
+                                    showAnswers -> Color.White
+                                    bgColor == Color.Transparent -> Color(0xFFFAF8F3)
+                                    else -> bgColor
+                                }
 
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(bgColor)
+                                        .padding(vertical = 4.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(boxBg)
+                                        .border(1.5.dp, borderColor, RoundedCornerShape(10.dp))
                                         .clickable(enabled = !showAnswers && userSelected == null) {
                                             selectedAnswers = selectedAnswers + (q.number to optLetter)
                                         }
-                                        .padding(vertical = 4.dp, horizontal = 6.dp)
+                                        .padding(vertical = 12.dp, horizontal = 14.dp)
                                 ) {
-                                    Text(opt, fontSize = 14.sp, color = textColor, fontWeight = if (bgColor != Color.Transparent) FontWeight.Bold else FontWeight.Normal)
+                                    Text(
+                                        opt,
+                                        fontSize = 14.sp,
+                                        color = if (showAnswers) Color(0xFF1A1A1A) else textColor,
+                                        fontWeight = if (bgColor != Color.Transparent) FontWeight.Bold else FontWeight.Normal
+                                    )
                                 }
                             }
                             if (showAnswers && q.correctAnswer.isNotEmpty()) {
                                 Text(
                                     "Correct Answer: ${q.correctAnswer}",
                                     fontSize = 13.sp,
-                                    color = Color(0xFF5B5F6B),
-                                    modifier = Modifier.padding(top = 4.dp)
+                                    color = Color(0xFF1F7A3D),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(top = 6.dp)
                                 )
                             }
                         }
@@ -269,11 +315,11 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                         .clip(RoundedCornerShape(14.dp))
                         .background(Color(0xFFE85D4C))
                         .clickable {
-                            val path = generatePdf(context, setTitle, questions)
+                            val path = savePdfToDownloads(context, setTitle, questions)
                             if (path != null) {
-                                Toast.makeText(context, "Saved: $path", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, "Saved to $path", Toast.LENGTH_LONG).show()
                             } else {
-                                Toast.makeText(context, "Failed to generate PDF", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Failed to save PDF", Toast.LENGTH_SHORT).show()
                             }
                         }
                         .padding(vertical = 14.dp),
