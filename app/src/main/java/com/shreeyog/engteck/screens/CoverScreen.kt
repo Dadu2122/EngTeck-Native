@@ -35,7 +35,7 @@ data class CoverContent(
 )
 
 @Composable
-fun CoverScreen() {
+fun CoverScreen(onProgressClick: () -> Unit = {}) {
     var content by remember { mutableStateOf(CoverContent()) }
 
     LaunchedEffect(Unit) {
@@ -172,6 +172,7 @@ fun CoverScreen() {
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(Maroon)
+                    .clickable { onProgressClick() }
                     .padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
