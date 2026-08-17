@@ -61,7 +61,10 @@ fun HomeScreen(teacherName: String) {
             when (selectedTab) {
                 0 -> {
                     var selectedBook by remember { mutableStateOf<Pair<String, String>?>(null) }
-                    if (selectedBook != null) {
+                    var showProgressAnalytics by remember { mutableStateOf(false) }
+                    if (showProgressAnalytics) {
+                        ProgressAnalyticsScreen(onClose = { showProgressAnalytics = false })
+                    } else if (selectedBook != null) {
                         MiniBookReaderScreen(
                             bookKey = selectedBook!!.first,
                             title = selectedBook!!.second,
@@ -74,7 +77,7 @@ fun HomeScreen(teacherName: String) {
                                 .verticalScroll(rememberScrollState())
                         ) {
                             Column {
-                                CoverScreen()
+                                CoverScreen(onProgressClick = { showProgressAnalytics = true })
                                 TeacherProfileCard()
                                 DemoVideoCard()
                                 SelectedAspirantsCard()
