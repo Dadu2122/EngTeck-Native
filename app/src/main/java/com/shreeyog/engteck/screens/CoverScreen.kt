@@ -1,3 +1,4 @@
+import androidx.compose.foundation.clickable
 package com.shreeyog.engteck.screens
 
 import androidx.compose.foundation.background
