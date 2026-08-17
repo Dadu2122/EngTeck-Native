@@ -46,7 +46,7 @@ fun StudySetsScreen(
     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
         Text(catLabel, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = NavyDeep)
         Spacer(Modifier.height(4.dp))
-        Text("Set chunein", fontSize = 13.sp, color = InkSoft)
+        Text("Select a set", fontSize = 13.sp, color = InkSoft)
         Spacer(Modifier.height(16.dp))
 
         if (loading) {
@@ -54,7 +54,7 @@ fun StudySetsScreen(
                 CircularProgressIndicator(color = NavyDeep)
             }
         } else if (sets.isEmpty()) {
-            Text("Abhi koi set available nahi hai.", color = InkSoft, fontSize = 14.sp)
+            Text("No sets available yet.", color = InkSoft, fontSize = 14.sp)
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(sets) { set ->
@@ -79,6 +79,7 @@ fun StudySetsScreen(
         }
     }
 }
+
 @Composable
 fun StudyTabRoot() {
     var selectedCat by remember { mutableStateOf<StudyCategory?>(null) }
