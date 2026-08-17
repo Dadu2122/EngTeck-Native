@@ -68,6 +68,8 @@ fun HomeScreen(teacherName: String) {
                         CoverScreen()
                         TeacherProfileCard()
                         DemoVideoCard()
+                        SelectedAspirantsCard()
+                        AreasCoveredCard()
                     }
                 }
                 1 -> Box(Modifier.fillMaxSize().padding(20.dp)) {
