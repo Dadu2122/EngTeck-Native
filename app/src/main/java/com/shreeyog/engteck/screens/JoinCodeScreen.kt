@@ -30,7 +30,7 @@ fun JoinCodeScreen(onValidCode: (joinCode: String, teacherName: String) -> Unit)
         Text("Welcome to EngTeck", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = NavyDeep)
         Spacer(Modifier.height(6.dp))
         Text(
-            "Apne teacher ka Join Code daalein",
+            "Enter your teacher's Join Code",
             fontSize = 14.sp,
             color = InkSoft
         )
@@ -58,7 +58,7 @@ fun JoinCodeScreen(onValidCode: (joinCode: String, teacherName: String) -> Unit)
         Button(
             onClick = {
                 if (code.isBlank()) {
-                    error = "Join Code daalna zaroori hai"
+                    error = "Please enter a Join Code"
                     return@Button
                 }
                 loading = true
@@ -75,12 +75,12 @@ fun JoinCodeScreen(onValidCode: (joinCode: String, teacherName: String) -> Unit)
                             val teacherName = firstMatch.child("name").getValue(String::class.java) ?: "Teacher"
                             onValidCode(code, teacherName)
                         } else {
-                            error = "Ye Join Code sahi nahi hai"
+                            error = "This Join Code is not valid"
                         }
                     }
-                    .addOnFailureListener { e ->
+                    .addOnFailureListener {
                         loading = false
-                        error = "Error: ${e.message}"
+                        error = "Connection error — please try again"
                     }
             },
             modifier = Modifier
