@@ -73,7 +73,7 @@ fun HomeScreen(teacherName: String) {
                         PricingCard()
                         SyllabusPdfCard()
                         InquiryFormCard()
-                        MiniBooksScreen(onBookClick = { _, _ -> })
+                        MiniBooksScreen(onBookClick = { _: String, _: String -> })
                     }
                 }
                 1 -> Box(Modifier.fillMaxSize().padding(20.dp)) {
