@@ -1,5 +1,11 @@
 package com.shreeyog.engteck.screens
 
+import android.graphics.Canvas
+import android.graphics.Color as AColor
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
+import android.os.Environment
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,10 +20,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.database.FirebaseDatabase
+import java.io.File
+import java.io.FileOutputStream
 
 data class ParsedQuestion(
     val number: String,
@@ -48,11 +57,65 @@ private fun parseQuestions(raw: String): List<ParsedQuestion> {
     }
 }
 
+private fun generatePdf(context: android.content.Context, title: String, questions: List<ParsedQuestion>): String? {
+    return try {
+        val pageWidth = 595
+        val pageHeight = 842
+        val document = PdfDocument()
+        val titlePaint = Paint().apply { color = AColor.WHITE; textSize = 20f; isFakeBoldText = true }
+        val bandPaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
+        val qPaint = Paint().apply { color = AColor.rgb(0x1A, 0x1A, 0x1A); textSize = 13f; isFakeBoldText = true }
+        val optPaint = Paint().apply { color = AColor.rgb(0x5B, 0x5F, 0x6B); textSize = 12f }
+        val ansPaint = Paint().apply { color = AColor.rgb(0x1F, 0x7A, 0x3D); textSize = 12f; isFakeBoldText = true }
+
+        var pageNumber = 1
+        var page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+        var canvas = page.canvas
+        canvas.drawRect(0f, 0f, pageWidth.toFloat(), 60f, bandPaint)
+        canvas.drawText(title, 30f, 38f, titlePaint)
+        var y = 90f
+        val marginBottom = 800f
+
+        for (q in questions) {
+            if (y > marginBottom) {
+                document.finishPage(page)
+                pageNumber++
+                page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+                canvas = page.canvas
+                y = 40f
+            }
+            canvas.drawText("${q.number}. ${q.question}", 30f, y, qPaint)
+            y += 20f
+            q.options.forEach { opt ->
+                canvas.drawText(opt, 45f, y, optPaint)
+                y += 17f
+            }
+            if (q.correctAnswer.isNotEmpty()) {
+                canvas.drawText("Correct Answer: ${q.correctAnswer}", 45f, y, ansPaint)
+                y += 17f
+            }
+            y += 12f
+        }
+        document.finishPage(page)
+
+        val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        val safeTitle = title.replace(Regex("[^a-zA-Z0-9]"), "_")
+        val file = File(downloadsDir, "$safeTitle.pdf")
+        FileOutputStream(file).use { document.writeTo(it) }
+        document.close()
+        file.absolutePath
+    } catch (e: Exception) {
+        null
+    }
+}
+
 @Composable
 fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
     var loading by remember { mutableStateOf(true) }
     var questions by remember { mutableStateOf<List<ParsedQuestion>>(emptyList()) }
     var showAnswers by remember { mutableStateOf(true) }
+    var selectedAnswers by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val context = LocalContext.current
 
     LaunchedEffect(catKey, setKey) {
         FirebaseDatabase.getInstance().getReference("studySets")
@@ -100,7 +163,10 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                     .clip(RoundedCornerShape(14.dp))
                     .background(if (!showAnswers) Color(0xFFD4A017) else Color.White)
                     .border(1.5.dp, Color(0xFFE3DFD3), RoundedCornerShape(14.dp))
-                    .clickable { showAnswers = false }
+                    .clickable {
+                        showAnswers = false
+                        selectedAnswers = emptyMap()
+                    }
                     .padding(vertical = 14.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -138,8 +204,42 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                         }
                         Spacer(Modifier.height(8.dp))
                         Column(modifier = Modifier.padding(start = 36.dp)) {
+                            val userSelected = selectedAnswers[q.number]
                             q.options.forEach { opt ->
-                                Text(opt, fontSize = 14.sp, color = Color(0xFF5B5F6B), modifier = Modifier.padding(bottom = 4.dp))
+                                val optLetter = opt.substringBefore(")").trim()
+                                val correctLetter = q.correctAnswer.trim()
+                                val isSelected = userSelected == optLetter
+                                val isCorrectOption = optLetter == correctLetter
+
+                                val bgColor = when {
+                                    showAnswers -> Color.Transparent
+                                    userSelected == null -> Color.Transparent
+                                    isSelected && isCorrectOption -> Color(0xFFDCF5E0)
+                                    isSelected && !isCorrectOption -> Color(0xFFFBE0DE)
+                                    isCorrectOption -> Color(0xFFDCF5E0)
+                                    else -> Color.Transparent
+                                }
+                                val textColor = when {
+                                    showAnswers -> Color(0xFF5B5F6B)
+                                    userSelected == null -> Color(0xFF5B5F6B)
+                                    isSelected && isCorrectOption -> Color(0xFF1F7A3D)
+                                    isSelected && !isCorrectOption -> Color(0xFFC0392B)
+                                    isCorrectOption -> Color(0xFF1F7A3D)
+                                    else -> Color(0xFF5B5F6B)
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(bgColor)
+                                        .clickable(enabled = !showAnswers && userSelected == null) {
+                                            selectedAnswers = selectedAnswers + (q.number to optLetter)
+                                        }
+                                        .padding(vertical = 4.dp, horizontal = 6.dp)
+                                ) {
+                                    Text(opt, fontSize = 14.sp, color = textColor, fontWeight = if (bgColor != Color.Transparent) FontWeight.Bold else FontWeight.Normal)
+                                }
                             }
                             if (showAnswers && q.correctAnswer.isNotEmpty()) {
                                 Text(
@@ -168,6 +268,14 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                         .weight(1f)
                         .clip(RoundedCornerShape(14.dp))
                         .background(Color(0xFFE85D4C))
+                        .clickable {
+                            val path = generatePdf(context, setTitle, questions)
+                            if (path != null) {
+                                Toast.makeText(context, "Saved: $path", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(context, "Failed to generate PDF", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                         .padding(vertical = 14.dp),
                     contentAlignment = Alignment.Center
                 ) {
