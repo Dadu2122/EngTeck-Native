@@ -34,7 +34,7 @@ fun AiTutorCard() {
         Text("🤖 Ask AI", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
         Spacer(Modifier.height(4.dp))
         Text(
-            "सवाल पूछो, photo से solve करवाओ, quiz बनवाओ, या videos ढूंढो — कभी भी।",
+            "Ask questions, solve from a photo, generate a quiz, or find videos — anytime.",
             fontSize = 12.sp,
             color = Color(0xFF5B5F6B)
         )
@@ -95,7 +95,7 @@ fun AiTutorCard() {
                 )
                 IconButton(onClick = {
                     if (input.isNotBlank()) {
-                        messages = messages + AiMessage(input, true) + AiMessage("AI Tutor backend jald hi connect hoga — ye reply ek placeholder hai.", false)
+                        messages = messages + AiMessage(input, true) + AiMessage("The AI Tutor backend will be connected soon — this is a placeholder reply.", false)
                         input = ""
                     }
                 }) {
@@ -104,7 +104,7 @@ fun AiTutorCard() {
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "AI से गलतियाँ हो सकती हैं — important answers वेरीफाई कर लेना।",
+                "AI can make mistakes — please verify important answers.",
                 fontSize = 10.sp,
                 color = Color(0xFF5B5F6B)
             )
