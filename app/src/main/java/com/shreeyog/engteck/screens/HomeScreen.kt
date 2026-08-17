@@ -89,6 +89,9 @@ fun HomeScreen(teacherName: String) {
                 1 -> Box(Modifier.fillMaxSize().padding(20.dp)) {
                     StudyTabRoot()
                 }
+                4 -> Box(Modifier.fillMaxSize()) {
+                    ProfileTabScreen()
+                }
                 else -> Box(Modifier.fillMaxSize().padding(20.dp)) {
                     PlaceholderTab(tabs[selectedTab].label)
                 }
