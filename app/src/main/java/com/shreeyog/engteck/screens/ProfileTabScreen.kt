@@ -82,7 +82,7 @@ private fun AdminPanelPlaceholder(teacherName: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Welcome, $teacherName 👋", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
+        Text("Welcome, Admin 👋", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
         Spacer(Modifier.height(8.dp))
         Text("Admin Panel — content editing tools coming next", fontSize = 13.sp, color = Color(0xFF5B5F6B))
     }
