@@ -4,8 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -50,7 +52,7 @@ fun ProgressAnalyticsScreen(onClose: () -> Unit) {
             Text("✕", color = Color.White, fontSize = 18.sp, modifier = Modifier.clickable { onClose() })
         }
 
-        Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                 PA_CATS.forEach { (key, label) ->
                     val active = activeCat == key
@@ -103,12 +105,21 @@ fun ProgressAnalyticsScreen(onClose: () -> Unit) {
                     Text("📋 Registered Students", color = if (activeView == "students") Color.White else Color(0xFF5B5F6B), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                 }
             }
-            Spacer(Modifier.height(16.dp))
+        }
 
-            if (activeView == "scorers") {
-                TopScorersList(activeCat)
-            } else {
-                RegisteredStudentsList(activeCat)
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+            ) {
+                if (activeView == "scorers") {
+                    TopScorersList(activeCat)
+                } else {
+                    RegisteredStudentsList(activeCat)
+                }
+                Spacer(Modifier.height(24.dp))
             }
         }
     }
@@ -215,7 +226,7 @@ private fun RegisteredStudentsList(catKey: String) {
                 loading = false
                 students = snapshot.children.mapNotNull { r ->
                     val planCategory = r.child("planCategory").getValue(String::class.java) ?: return@mapNotNull null
-                    if (planCategory != catKey) return@mapNotNull null
+                    if (!planCategory.equals(catKey, ignoreCase = true)) return@mapNotNull null
                     val name = r.child("nickname").getValue(String::class.java)
                         ?: r.child("name").getValue(String::class.java) ?: "-"
                     val planType = r.child("planType").getValue(String::class.java) ?: ""
