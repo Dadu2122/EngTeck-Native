@@ -80,7 +80,7 @@ fun MiniBooksScreen(onBookClick: (key: String, title: String) -> Unit) {
             }
         } else if (books.isEmpty()) {
             Text(
-                "Abhi koi book upload nahi hui hai.",
+                "No books uploaded yet.",
                 color = InkSoft,
                 fontSize = 12.5.sp,
                 modifier = Modifier.padding(horizontal = 20.dp)
