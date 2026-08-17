@@ -2,6 +2,8 @@ package com.shreeyog.engteck.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,7 +25,7 @@ fun ProfileTabScreen() {
         isAdmin -> {
             Column(Modifier.fillMaxSize()) {
                 TextButton(onClick = { isAdmin = false }) { Text("‹ Logout") }
-                AdminPanelPlaceholder(adminName)
+                AdminPanelScreen()
             }
         }
         showAdminLogin -> {
@@ -54,8 +56,6 @@ fun ProfileTabScreen() {
 
                 Spacer(Modifier.weight(1f))
 
-                // Hidden admin access: tap this line 7 times within 3 seconds to open Admin Login.
-                // Not visible to students as a real button — looks like plain app version text.
                 Text(
                     "EngTeck v1.0",
                     fontSize = 11.sp,
@@ -76,14 +76,20 @@ fun ProfileTabScreen() {
 }
 
 @Composable
-private fun AdminPanelPlaceholder(teacherName: String) {
+private fun AdminPanelScreen() {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
     ) {
-        Text("Welcome, Admin 👋", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
-        Spacer(Modifier.height(8.dp))
-        Text("Admin Panel — content editing tools coming next", fontSize = 13.sp, color = Color(0xFF5B5F6B))
+        Text("Admin Panel", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
+        Spacer(Modifier.height(16.dp))
+        AdminContentEditorCard()
+        Spacer(Modifier.height(16.dp))
+        AdminMiniBookUploadCard()
+        Spacer(Modifier.height(16.dp))
+        AdminDataViewersCard()
+        Spacer(Modifier.height(30.dp))
     }
 }
