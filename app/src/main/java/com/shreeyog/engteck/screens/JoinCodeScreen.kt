@@ -63,7 +63,6 @@ fun JoinCodeScreen(onValidCode: (joinCode: String, teacherName: String) -> Unit)
                 }
                 loading = true
                 error = null
-                // Actual structure: teachers/{anyKey}/joinCode field ko match karo
                 val db = FirebaseDatabase.getInstance()
                 db.getReference("teachers")
                     .orderByChild("joinCode")
@@ -79,9 +78,9 @@ fun JoinCodeScreen(onValidCode: (joinCode: String, teacherName: String) -> Unit)
                             error = "Ye Join Code sahi nahi hai"
                         }
                     }
-                    .addOnFailureListener {
+                    .addOnFailureListener { e ->
                         loading = false
-                        error = "Connection error — dobara try karein"
+                        error = "Error: ${e.message}"
                     }
             },
             modifier = Modifier
@@ -93,8 +92,4 @@ fun JoinCodeScreen(onValidCode: (joinCode: String, teacherName: String) -> Unit)
             if (loading) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp), color = NavyDeep, strokeWidth = 2.dp)
             } else {
-                Text("Continue", fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
+                Text("Continue", fontWeight = FontWeight.
