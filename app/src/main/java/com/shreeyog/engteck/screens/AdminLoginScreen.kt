@@ -57,7 +57,7 @@ fun AdminLoginScreen(onLoginSuccess: (teacherKey: String, teacherName: String) -
         Button(
             onClick = {
                 if (pin.isBlank()) {
-                    error = "PIN daalein"
+                    error = "Please enter a PIN"
                     return@Button
                 }
                 loading = true
@@ -74,12 +74,12 @@ fun AdminLoginScreen(onLoginSuccess: (teacherKey: String, teacherName: String) -
                             val teacherName = firstMatch.child("name").getValue(String::class.java) ?: "Teacher"
                             onLoginSuccess(firstMatch.key ?: "default", teacherName)
                         } else {
-                            error = "गलत PIN।"
+                            error = "Incorrect PIN"
                         }
                     }
                     .addOnFailureListener {
                         loading = false
-                        error = "Connection error — dobara try karein"
+                        error = "Connection error — please try again"
                     }
             },
             modifier = Modifier.fillMaxWidth().height(50.dp),
