@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "782691368600",
+    "firebase_url": "https://english-coaching-22eb5-default-rtdb.firebaseio.com",
+    "project_id": "english-coaching-22eb5",
+    "storage_bucket": "english-coaching-22eb5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:782691368600:android:d0f0ce10e2066c7bf3daed",
+        "android_client_info": {
+          "package_name": "com.shreeyog.engteck"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbhrHrl9F26sZjO_PNMS8seXIaPQF8qbY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
