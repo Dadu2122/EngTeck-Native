@@ -58,7 +58,7 @@ fun HomeScreen(teacherName: String) {
                 .padding(20.dp)
         ) {
             when (selectedTab) {
-                0 -> HomeTabContent(teacherName)
+                0 -> CoverScreen()
                 1 -> StudyTabRoot()
                 else -> PlaceholderTab(tabs[selectedTab].label)
             }
