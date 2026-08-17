@@ -64,7 +64,11 @@ fun HomeScreen(teacherName: String) {
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    CoverScreen()
+                    Column {
+                        CoverScreen()
+                        TeacherProfileCard()
+                        DemoVideoCard()
+                    }
                 }
                 1 -> Box(Modifier.fillMaxSize().padding(20.dp)) {
                     StudyTabRoot()
