@@ -92,4 +92,8 @@ fun JoinCodeScreen(onValidCode: (joinCode: String, teacherName: String) -> Unit)
             if (loading) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp), color = NavyDeep, strokeWidth = 2.dp)
             } else {
-                Text("Continue", fontWeight = FontWeight.
+                Text("Continue", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
