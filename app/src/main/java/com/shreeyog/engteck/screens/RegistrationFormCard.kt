@@ -130,7 +130,7 @@ fun RegistrationFormCard() {
 
             Spacer(Modifier.height(16.dp))
             Text(
-                "Payment ke saath registration jald hi native app me aayega — abhi ke liye registration Firebase me save hogi, payment web app se karein.",
+                "Payment-based registration will be added to the native app soon — for now registration is saved to Firebase, please complete payment via the web app.",
                 fontSize = 11.sp,
                 color = Color(0xFF946B00),
                 lineHeight = 15.sp
@@ -140,7 +140,7 @@ fun RegistrationFormCard() {
             Button(
                 onClick = {
                     if (name.isBlank() || nickname.isBlank() || state.isBlank() || district.isBlank() || mobile.isBlank() || exam.isBlank()) {
-                        statusMsg = "Sabhi zaroori fields bharen"
+                        statusMsg = "Please fill all required fields"
                         return@Button
                     }
                     submitting = true
@@ -153,12 +153,12 @@ fun RegistrationFormCard() {
                     FirebaseDatabase.getInstance().getReference("registrations").push().setValue(entry)
                         .addOnSuccessListener {
                             submitting = false
-                            statusMsg = "Registration submit ho gayi ✓"
+                            statusMsg = "Registration submitted ✓"
                             name = ""; nickname = ""; state = ""; district = ""; mobile = ""; email = ""; exam = ""
                         }
                         .addOnFailureListener {
                             submitting = false
-                            statusMsg = "Kuch galat hua, dobara try karein"
+                            statusMsg = "Something went wrong, please try again"
                         }
                 },
                 enabled = !submitting,
