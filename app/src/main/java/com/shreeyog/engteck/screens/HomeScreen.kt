@@ -1,6 +1,8 @@
 package com.shreeyog.engteck.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -55,36 +57,21 @@ fun HomeScreen(teacherName: String) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(20.dp)
         ) {
             when (selectedTab) {
-                0 -> CoverScreen()
-                1 -> StudyTabRoot()
-                else -> PlaceholderTab(tabs[selectedTab].label)
-            }
-        }
-    }
-}
-
-@Composable
-private fun HomeTabContent(teacherName: String) {
-    Column {
-        Text("Welcome,", fontSize = 14.sp, color = InkSoft)
-        Text(teacherName, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = NavyDeep)
-        Spacer(Modifier.height(24.dp))
-        Card(
-            colors = CardDefaults.cardColors(containerColor = NavyDeep),
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(Modifier.padding(20.dp)) {
-                Text("TGT / PGT / LT Grade / GIC", color = Gold, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Aapki coaching journey yahan se shuru hoti hai — Study Material, Live Class, Quiz sab ek jagah.",
-                    color = androidx.compose.ui.graphics.Color.White,
-                    fontSize = 13.sp
-                )
+                0 -> Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    CoverScreen()
+                }
+                1 -> Box(Modifier.fillMaxSize().padding(20.dp)) {
+                    StudyTabRoot()
+                }
+                else -> Box(Modifier.fillMaxSize().padding(20.dp)) {
+                    PlaceholderTab(tabs[selectedTab].label)
+                }
             }
         }
     }
