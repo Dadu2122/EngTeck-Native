@@ -76,13 +76,14 @@ private fun AdminRegistrationsCardView() {
                 loading = false
                 allStudents = snapshot.children.mapNotNull { r ->
                     val category = r.child("planCategory").getValue(String::class.java) ?: return@mapNotNull null
-                    val name = r.child("nickname").getValue(String::class.java)
-                        ?: r.child("name").getValue(String::class.java) ?: "-"
+                    val realName = r.child("name").getValue(String::class.java) ?: "-"
+                    val nickname = r.child("nickname").getValue(String::class.java) ?: ""
+                    val displayName = if (nickname.isNotEmpty()) "$realName (Nickname: $nickname)" else realName
                     val planType = r.child("planType").getValue(String::class.java) ?: ""
                     val isLive = planType.startsWith("Live Class") && !planType.startsWith("No Live")
                     val amount = r.child("planAmount").getValue(Long::class.java)?.toInt() ?: 0
                     val mobile = r.child("mobile").getValue(String::class.java) ?: ""
-                    AdminStudentEntry(name, category, isLive, amount, mobile)
+                    AdminStudentEntry(displayName, category, isLive, amount, mobile)
                 }
             }
             .addOnFailureListener { loading = false }
