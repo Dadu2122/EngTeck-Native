@@ -91,11 +91,16 @@ private fun buildPdfDocument(title: String, questions: List<ParsedQuestion>): Pd
     val cardBgEven = Paint().apply { color = AColor.WHITE }
     val cardBgOdd = Paint().apply { color = AColor.rgb(0xF5, 0xF3, 0xEC) }
     val dividerPaint = Paint().apply { color = AColor.rgb(0xD4, 0xA0, 0x17); strokeWidth = 1.5f }
+    val borderPaint = Paint().apply {
+        color = AColor.rgb(0xD4, 0xA0, 0x17)
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+    }
     val circlePaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
     val circleTextPaint = Paint().apply { color = AColor.WHITE; textSize = 11f; isFakeBoldText = true; textAlign = Paint.Align.CENTER }
     val qPaint = Paint().apply { color = AColor.rgb(0x1A, 0x1A, 0x1A); textSize = 13f; isFakeBoldText = true }
-    val optPaint = Paint().apply { color = AColor.rgb(0x5B, 0x5F, 0x6B); textSize = 12f }
-    val ansPaint = Paint().apply { color = AColor.rgb(0x1F, 0x7A, 0x3D); textSize = 12f; isFakeBoldText = true }
+    val optGreenPaint = Paint().apply { color = AColor.rgb(0x1F, 0x7A, 0x3D); textSize = 12f; isFakeBoldText = true }
+    val optRedPaint = Paint().apply { color = AColor.rgb(0xC0, 0x39, 0x2B); textSize = 12f }
 
     var pageNumber = 1
     var page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
@@ -108,9 +113,13 @@ private fun buildPdfDocument(title: String, questions: List<ParsedQuestion>): Pd
         canvas.drawText("Shree English Classes", leftMargin, 50f, subtitlePaint)
     }
 
+    fun drawPageBorder() {
+        canvas.drawRect(4f, 4f, pageWidth - 4f, pageHeight - 4f, borderPaint)
+    }
+
     drawHeader()
     var y = 64f
-    val marginBottom = 800f
+    val marginBottom = 790f
     val textStartX = leftMargin + 34f
     val textWidth = contentWidth - 34f
 
@@ -118,12 +127,12 @@ private fun buildPdfDocument(title: String, questions: List<ParsedQuestion>): Pd
         val qLines = wrapText("${q.number}. ${q.question}", qPaint, textWidth)
         var blockHeight = 20f + (qLines.size * 16f)
         q.options.forEach { opt ->
-            blockHeight += wrapText(opt, optPaint, textWidth - 10f).size * 15f
+            blockHeight += wrapText(opt, optRedPaint, textWidth - 10f).size * 15f
         }
-        if (q.correctAnswer.isNotEmpty()) blockHeight += 18f
         blockHeight += 12f
 
         if (y + blockHeight > marginBottom) {
+            drawPageBorder()
             document.finishPage(page)
             pageNumber++
             page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
@@ -146,23 +155,24 @@ private fun buildPdfDocument(title: String, questions: List<ParsedQuestion>): Pd
         }
         lineY += 4f
 
+        val correctLetter = q.correctAnswer.trim()
         q.options.forEach { opt ->
-            val optLines = wrapText(opt, optPaint, textWidth - 10f)
+            val optLetter = opt.substringBefore(")").trim()
+            val isCorrect = optLetter == correctLetter
+            val paintToUse = if (isCorrect) optGreenPaint else optRedPaint
+            val prefix = if (isCorrect) "✓ " else "✗ "
+            val optLines = wrapText(prefix + opt, paintToUse, textWidth - 10f)
             optLines.forEach { line ->
-                canvas.drawText(line, textStartX + 10f, lineY, optPaint)
+                canvas.drawText(line, textStartX + 10f, lineY, paintToUse)
                 lineY += 15f
             }
-        }
-
-        if (q.correctAnswer.isNotEmpty()) {
-            lineY += 3f
-            canvas.drawText("Correct Answer: ${q.correctAnswer}", textStartX + 10f, lineY, ansPaint)
         }
 
         canvas.drawLine(0f, cardTop + blockHeight, pageWidth.toFloat(), cardTop + blockHeight, dividerPaint)
 
         y = cardTop + blockHeight
     }
+    drawPageBorder()
     document.finishPage(page)
     return document
 }
