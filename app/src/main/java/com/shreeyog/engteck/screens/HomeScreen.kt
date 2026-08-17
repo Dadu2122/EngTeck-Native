@@ -79,6 +79,11 @@ fun HomeScreen(teacherName: String) {
                         OfficialCutoffsCard()
                         ExpectedCutoffsCard()
                         LiveClassJoinCard()
+                        VideoLibraryCard()
+                        ClassRecordingsCard()
+                        PaidPdfLibraryCard()
+                        AiTutorCard()
+                        HelpDeskCard()
                     }
                 }
                 1 -> Box(Modifier.fillMaxSize().padding(20.dp)) {
