@@ -87,6 +87,8 @@ private fun AdminPanelScreen() {
         Spacer(Modifier.height(16.dp))
         AdminContentEditorCard()
         Spacer(Modifier.height(16.dp))
+        AdminFreePdfSetsCard()
+        Spacer(Modifier.height(16.dp))
         AdminAddRegistrationCard()
         Spacer(Modifier.height(16.dp))
         AdminScoresManagerCard()
@@ -97,3 +99,4 @@ private fun AdminPanelScreen() {
         Spacer(Modifier.height(30.dp))
     }
 }
+
