@@ -23,9 +23,110 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+// ---------- Simple text → PDF, used by the "Download PDF" button on Bio/Critical/Topic content pages ----------
+private fun psmSaveTextPdf(context: android.content.Context, title: String, body: String): String? {
+    return try {
+        val pageWidth = 595
+        val pageHeight = 842
+        val document = android.graphics.pdf.PdfDocument()
+        val titlePaint = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; textSize = 16f; isFakeBoldText = true }
+        val bandPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x12, 0x20, 0x3D) }
+        val bodyPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x1A, 0x1A, 0x1A); textSize = 12f }
+        val margin = 30f
+        val contentWidth = pageWidth - margin * 2
+
+        fun wrapText(text: String, paint: android.graphics.Paint, maxWidth: Float): List<String> {
+            if (text.isEmpty()) return listOf("")
+            val words = text.split(" ")
+            val lines = mutableListOf<String>()
+            var cur = StringBuilder()
+            for (w in words) {
+                val test = if (cur.isEmpty()) w else "$cur $w"
+                if (paint.measureText(test) > maxWidth && cur.isNotEmpty()) { lines.add(cur.toString()); cur = StringBuilder(w) }
+                else cur = StringBuilder(test)
+            }
+            if (cur.isNotEmpty()) lines.add(cur.toString())
+            return lines
+        }
+
+        val allLines = mutableListOf<String>()
+        body.split("\n").forEach { p -> allLines.addAll(wrapText(p, bodyPaint, contentWidth)) }
+
+        var pageNumber = 1
+        var page = document.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+        var canvas = page.canvas
+        canvas.drawRect(0f, 0f, pageWidth.toFloat(), 50f, bandPaint)
+        canvas.drawText(title, margin, 32f, titlePaint)
+        var y = 74f
+        val lineHeight = 16f
+        for (line in allLines) {
+            if (y > 800f) {
+                document.finishPage(page)
+                pageNumber++
+                page = document.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+                canvas = page.canvas
+                y = 40f
+            }
+            canvas.drawText(line, margin, y, bodyPaint)
+            y += lineHeight
+        }
+        document.finishPage(page)
+
+        val safeTitle = title.replace(Regex("[^a-zA-Z0-9]"), "_")
+        val fileName = "$safeTitle.pdf"
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { out -> document.writeTo(out) }
+                document.close()
+                "Downloads/$fileName"
+            } else {
+                document.close(); null
+            }
+        } else {
+            val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+            val file = java.io.File(downloadsDir, fileName)
+            java.io.FileOutputStream(file).use { document.writeTo(it) }
+            document.close()
+            file.absolutePath
+        }
+    } catch (e: Exception) {
+        null
+    }
+}
+
+@Composable
+private fun PsmDownloadPdfButton(title: String, body: String) {
+    val context = LocalContext.current
+    if (body.isBlank()) return
+    Spacer(Modifier.height(14.dp))
+    Button(
+        onClick = {
+            val path = psmSaveTextPdf(context, title, body)
+            android.widget.Toast.makeText(
+                context,
+                if (path != null) "Saved to $path" else "Download failed, try again",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        },
+        colors = ButtonDefaults.buttonColors(containerColor = PSM_TEAL),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().height(46.dp)
+    ) {
+        Text("⬇ Download PDF", color = Color.White, fontWeight = FontWeight.Bold)
+    }
+}
 
 private val PSM_NAVY = Color(0xFF12203D)
 private val PSM_GOLD = Color(0xFFD4A017)
@@ -98,6 +199,12 @@ private sealed class PsmView {
 @Composable
 fun PremiumStudyMaterialScreen(catKey: String, catLabel: String, mobile: String, onExit: () -> Unit) {
     var view by remember { mutableStateOf<PsmView>(PsmView.Home) }
+    var progressAnalyticsOpen by remember { mutableStateOf(false) }
+
+    if (progressAnalyticsOpen) {
+        ProgressAnalyticsScreen(onClose = { progressAnalyticsOpen = false })
+        return
+    }
 
     Column(Modifier.fillMaxSize().background(Color(0xFFFAF8F3))) {
         Row(
@@ -129,7 +236,8 @@ fun PremiumStudyMaterialScreen(catKey: String, catLabel: String, mobile: String,
                 onOpenHistoryPoint = { pointKey, title, content -> view = PsmView.TopicPointDetail(PSM_HISTORY_KEY, pointKey, title, content) },
                 onOpenSection = { sectionKey, label -> view = PsmView.TopicPointsList(sectionKey, label) },
                 onOpenDailyPractice = { partKey, label -> view = PsmView.DailyPracticeQuiz(partKey, label) },
-                onOpenSelfAssessment = { view = PsmView.SelfAssessment }
+                onOpenSelfAssessment = { view = PsmView.SelfAssessment },
+                onOpenProgressAnalytics = { progressAnalyticsOpen = true }
             )
             is PsmView.WriterDetail -> PsmWriterDetailView(
                 writerName = v.name,
@@ -158,7 +266,8 @@ private fun PsmHomeView(
     onOpenHistoryPoint: (String, String, String) -> Unit,
     onOpenSection: (String, String) -> Unit,
     onOpenDailyPractice: (String, String) -> Unit,
-    onOpenSelfAssessment: () -> Unit
+    onOpenSelfAssessment: () -> Unit,
+    onOpenProgressAnalytics: () -> Unit
 ) {
     var loading by remember { mutableStateOf(true) }
     var syllabus by remember { mutableStateOf("") }
@@ -378,6 +487,7 @@ private fun PsmHomeView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(PSM_MAROON, RoundedCornerShape(12.dp))
+                    .clickable(onClick = onOpenProgressAnalytics)
                     .padding(vertical = 16.dp)
             ) {
                 Text("📊 Progress Analytics", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
@@ -437,9 +547,12 @@ private fun PsmTextFieldView(catKey: String, writerKey: String, field: String, t
         if (loading) {
             CircularProgressIndicator(color = PSM_NAVY)
         } else if (text.isBlank()) {
-            Text("Abhi content nahi hai.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
+            Text("Coming soon.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
         } else {
-            LazyColumn { item { Text(text, fontSize = 14.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp) } }
+            LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+                item { Text(text, fontSize = 14.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp) }
+            }
+            PsmDownloadPdfButton(title, text)
         }
     }
 }
@@ -495,12 +608,18 @@ private fun PsmWorksListView(catKey: String, writerKey: String, onOpen: (String,
 
 @Composable
 private fun PsmWorkDetailView(catKey: String, writerKey: String, workKey: String, title: String) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("engteck_prefs", android.content.Context.MODE_PRIVATE) }
+    val notesKey = "psm_notes_${catKey}_${writerKey}_$workKey"
+
     var loading by remember { mutableStateOf(true) }
     var summary by remember { mutableStateOf("") }
     var characters by remember { mutableStateOf("") }
     var lines by remember { mutableStateOf("") }
     var themes by remember { mutableStateOf("") }
     var questions by remember { mutableStateOf("") }
+    var myNotes by remember { mutableStateOf(prefs.getString(notesKey, "") ?: "") }
+    var notesSaved by remember { mutableStateOf(false) }
     var activeTab by remember { mutableStateOf("summary") }
 
     LaunchedEffect(Unit) {
@@ -518,8 +637,28 @@ private fun PsmWorkDetailView(catKey: String, writerKey: String, workKey: String
 
     Column(Modifier.fillMaxSize()) {
         Text(title, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A), modifier = Modifier.padding(20.dp))
-        Row(modifier = Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("summary" to "Summary", "characters" to "Characters", "lines" to "Lines", "themes" to "Themes", "questions" to "MCQs").forEach { (key, label) ->
+        Row(
+            modifier = Modifier.padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            listOf("summary" to "Summary", "characters" to "Characters", "lines" to "Lines").forEach { (key, label) ->
+                val active = activeTab == key
+                Box(
+                    modifier = Modifier
+                        .background(if (active) PSM_TEAL else Color(0xFFF5F3EC), RoundedCornerShape(100.dp))
+                        .clickable { activeTab = key }
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(label, color = if (active) Color.White else Color(0xFF5B5F6B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            listOf("themes" to "Themes", "questions" to "MCQs", "notes" to "📝 My Notes").forEach { (key, label) ->
                 val active = activeTab == key
                 Box(
                     modifier = Modifier
@@ -536,6 +675,33 @@ private fun PsmWorkDetailView(catKey: String, writerKey: String, workKey: String
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PSM_NAVY) }
         } else if (activeTab == "questions") {
             PsmInlineMcqList(psmParseQuestions(questions), modifier = Modifier.weight(1f).padding(horizontal = 20.dp))
+        } else if (activeTab == "notes") {
+            Column(modifier = Modifier.weight(1f).padding(horizontal = 20.dp)) {
+                Text(
+                    "Ye notes sirf tumhare phone mein save hote hain — koi aur nahi dekh sakta.",
+                    fontSize = 11.sp, color = Color(0xFF5B5F6B), modifier = Modifier.padding(bottom = 10.dp)
+                )
+                OutlinedTextField(
+                    value = myNotes,
+                    onValueChange = { myNotes = it; notesSaved = false },
+                    modifier = Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 220.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    placeholder = { Text("Apne notes yahan likho…") }
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = {
+                        prefs.edit().putString(notesKey, myNotes).apply()
+                        notesSaved = true
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PSM_CORAL),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                ) {
+                    Text(if (notesSaved) "Saved ✓" else "Save Notes", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(20.dp))
+            }
         } else {
             val text = when (activeTab) {
                 "summary" -> summary
@@ -546,8 +712,11 @@ private fun PsmWorkDetailView(catKey: String, writerKey: String, workKey: String
             }
             LazyColumn(modifier = Modifier.weight(1f).padding(horizontal = 20.dp)) {
                 item {
-                    if (text.isBlank()) Text("Abhi content nahi hai.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
-                    else Text(text, fontSize = 14.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp)
+                    if (text.isBlank()) Text("Coming soon.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
+                    else {
+                        Text(text, fontSize = 14.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp)
+                        PsmDownloadPdfButton("$title — ${activeTab.replaceFirstChar { it.uppercase() }}", text)
+                    }
                     Spacer(Modifier.height(30.dp))
                 }
             }
@@ -628,11 +797,13 @@ private fun PsmTopicPointDetailView(title: String, content: String) {
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Text(title, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A))
         Spacer(Modifier.height(14.dp))
-        LazyColumn {
-            item {
-                if (content.isBlank()) Text("Abhi content nahi hai.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
-                else Text(content, fontSize = 14.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp)
+        if (content.isBlank()) {
+            Text("Coming soon.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
+        } else {
+            LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+                item { Text(content, fontSize = 14.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp) }
             }
+            PsmDownloadPdfButton(title, content)
         }
     }
 }
