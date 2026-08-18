@@ -311,11 +311,10 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        TextButton(onClick = onBack) { Text("‹ Back") }
+        TextButton(onClick = onBack, modifier = Modifier.padding(horizontal = 8.dp)) { Text("‹ Back") }
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp)
                 .verticalScroll(rememberScrollState())
         ) {
             if (coverImageBase64 != null) {
@@ -323,11 +322,11 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
                     model = coverImageBase64,
                     contentDescription = title,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth().height(200.dp).background(Color(0xFFF5F3EC), RoundedCornerShape(14.dp))
+                    modifier = Modifier.fillMaxWidth().height(200.dp).background(Color(0xFFF5F3EC), RoundedCornerShape(14.dp)).padding(horizontal = 20.dp)
                 )
                 Spacer(Modifier.height(14.dp))
             }
-            Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
+            Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D), modifier = Modifier.padding(horizontal = 20.dp))
             Spacer(Modifier.height(16.dp))
 
             if (loading) {
@@ -335,101 +334,167 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
                     CircularProgressIndicator(color = Color(0xFF12203D))
                 }
             } else if (hasPdf) {
-                MiniBookPdfPreview(
-                    pdfBase64 = pdfBase64,
-                    unlocked = price == 0L || unlocked,
-                    freePageCount = MINIBOOK_FREE_SECTIONS
-                )
+                Box(Modifier.padding(horizontal = 20.dp)) {
+                    MiniBookPdfPreview(
+                        pdfBase64 = pdfBase64,
+                        unlocked = price == 0L || unlocked,
+                        freePageCount = MINIBOOK_FREE_SECTIONS
+                    )
+                }
                 if (price == 0L || unlocked) {
                     Spacer(Modifier.height(16.dp))
-                    Text(
-                        if (unlocked) "Payment confirmed ✓ — you can now download the full PDF." else "This book is free.",
-                        fontSize = 13.sp, color = Color(0xFF1F7A3D), fontWeight = FontWeight.Bold
-                    )
+                    Column(Modifier.padding(horizontal = 20.dp)) {
+                        Text(
+                            if (unlocked) "Payment confirmed ✓ — you can now download the full PDF." else "This book is free.",
+                            fontSize = 13.sp, color = Color(0xFF1F7A3D), fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Button(
+                            onClick = {
+                                val pb64 = pdfBase64
+                                if (pb64 == null) {
+                                    Toast.makeText(context, "PDF data not found", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    val path = savePdfBase64ToDownloads(context, pb64, title)
+                                    if (path != null) {
+                                        if (price == 0L) bumpFreeDownload()
+                                        Toast.makeText(context, "Saved to $path", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        Toast.makeText(context, "Download failed, try again", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B6B79)),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                        ) {
+                            Text("↓ Download Full PDF", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                } else {
+                    Spacer(Modifier.height(16.dp))
+                    Box(Modifier.padding(horizontal = 20.dp)) {
+                        MiniBookPaywall(
+                            price = price, mobile = mobile, upiId = upiId,
+                            payingInProgress = payingInProgress, payMsg = payMsg,
+                            checkingManual = checkingManual, manualMsg = manualMsg,
+                            coachingName = "Shree English Classes",
+                            onMobileChange = { mobile = it },
+                            onPayNow = { startPayNow() },
+                            onCheckAccess = { startCheckAccess() }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(30.dp))
+            } else if (content == null) {
+                Text("No content found.", fontSize = 13.sp, color = Color(0xFF5B5F6B), modifier = Modifier.padding(horizontal = 20.dp))
+            } else {
+                val blocks = content!!.split("\n\n").map { it.trim() }.filter { it.isNotEmpty() }
+                val freeBlocks = if (price == 0L || unlocked) blocks else blocks.take(MINIBOOK_FREE_SECTIONS)
+
+                freeBlocks.forEach { block ->
+                    val mcq = parseMiniBookMcqBlock(block)
+                    when {
+                        mcq != null -> {
+                            MiniBookMcqCard(mcq)
+                            Spacer(Modifier.height(14.dp))
+                        }
+                        block.startsWith("#") -> {
+                            Text(
+                                block.removePrefix("#").trim(),
+                                fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7A2E3D),
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
+                            )
+                        }
+                        else -> {
+                            Text(
+                                block, fontSize = 14.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp,
+                                modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 10.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (price > 0 && !unlocked && blocks.size > MINIBOOK_FREE_SECTIONS) {
                     Spacer(Modifier.height(10.dp))
-                    Button(
-                        onClick = {
-                            val pb64 = pdfBase64
-                            if (pb64 == null) {
-                                Toast.makeText(context, "PDF data not found", Toast.LENGTH_SHORT).show()
-                            } else {
-                                val path = savePdfBase64ToDownloads(context, pb64, title)
+                    Box(Modifier.padding(horizontal = 20.dp)) {
+                        MiniBookPaywall(
+                            price = price, mobile = mobile, upiId = upiId,
+                            payingInProgress = payingInProgress, payMsg = payMsg,
+                            checkingManual = checkingManual, manualMsg = manualMsg,
+                            coachingName = "Shree English Classes",
+                            onMobileChange = { mobile = it },
+                            onPayNow = { startPayNow() },
+                            onCheckAccess = { startCheckAccess() }
+                        )
+                    }
+                } else {
+                    Spacer(Modifier.height(16.dp))
+                    Column(Modifier.padding(horizontal = 20.dp)) {
+                        Button(
+                            onClick = {
+                                val path = saveMiniBookTextPdf(context, title, content ?: "")
                                 if (path != null) {
                                     if (price == 0L) bumpFreeDownload()
                                     Toast.makeText(context, "Saved to $path", Toast.LENGTH_LONG).show()
                                 } else {
                                     Toast.makeText(context, "Download failed, try again", Toast.LENGTH_SHORT).show()
                                 }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B6B79)),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth().height(48.dp)
-                    ) {
-                        Text("↓ Download Full PDF", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                } else {
-                    Spacer(Modifier.height(16.dp))
-                    MiniBookPaywall(
-                        price = price, mobile = mobile, upiId = upiId,
-                        payingInProgress = payingInProgress, payMsg = payMsg,
-                        checkingManual = checkingManual, manualMsg = manualMsg,
-                        coachingName = "Shree English Classes",
-                        onMobileChange = { mobile = it },
-                        onPayNow = { startPayNow() },
-                        onCheckAccess = { startCheckAccess() }
-                    )
-                }
-                Spacer(Modifier.height(30.dp))
-            } else if (content == null) {
-                Text("No content found.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
-            } else {
-                val blocks = content!!.split("\n\n").map { it.trim() }.filter { it.isNotEmpty() }
-                val freeBlocks = if (price == 0L || unlocked) blocks else blocks.take(MINIBOOK_FREE_SECTIONS)
-
-                freeBlocks.forEach { block ->
-                    if (block.startsWith("#")) {
-                        Text(
-                            block.removePrefix("#").trim(),
-                            fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7A2E3D),
-                            modifier = Modifier.padding(top = 14.dp, bottom = 6.dp)
-                        )
-                    } else {
-                        Text(block, fontSize = 14.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp, modifier = Modifier.padding(bottom = 10.dp))
-                    }
-                }
-
-                if (price > 0 && !unlocked && blocks.size > MINIBOOK_FREE_SECTIONS) {
-                    Spacer(Modifier.height(10.dp))
-                    MiniBookPaywall(
-                        price = price, mobile = mobile, upiId = upiId,
-                        payingInProgress = payingInProgress, payMsg = payMsg,
-                        checkingManual = checkingManual, manualMsg = manualMsg,
-                        coachingName = "Shree English Classes",
-                        onMobileChange = { mobile = it },
-                        onPayNow = { startPayNow() },
-                        onCheckAccess = { startCheckAccess() }
-                    )
-                } else {
-                    Spacer(Modifier.height(16.dp))
-                    Button(
-                        onClick = {
-                            val path = saveMiniBookTextPdf(context, title, content ?: "")
-                            if (path != null) {
-                                if (price == 0L) bumpFreeDownload()
-                                Toast.makeText(context, "Saved to $path", Toast.LENGTH_LONG).show()
-                            } else {
-                                Toast.makeText(context, "Download failed, try again", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B6B79)),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth().height(48.dp)
-                    ) {
-                        Text("↓ Download Full PDF", color = Color.White, fontWeight = FontWeight.Bold)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B6B79)),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                        ) {
+                            Text("↓ Download Full PDF", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
                 Spacer(Modifier.height(30.dp))
+            }
+        }
+    }
+}
+
+// A pasted-text block is treated as an MCQ card if its first line looks like "Q1. ..." or "1. ...".
+// Every other non-blank line in the block becomes a plain read-only option row (letter prefixes,
+// if the admin included them, are stripped since these cards are for reading, not answering).
+private data class MiniBookMcq(val number: String, val question: String, val options: List<String>)
+private fun parseMiniBookMcqBlock(block: String): MiniBookMcq? {
+    val lines = block.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+    if (lines.isEmpty()) return null
+    val m = Regex("^Q?(\\d+)[.)]\\s*(.*)", RegexOption.IGNORE_CASE).find(lines[0]) ?: return null
+    val number = m.groupValues[1]
+    val question = m.groupValues[2]
+    val options = lines.drop(1)
+        .filterNot { it.startsWith("Correct Answer", ignoreCase = true) || it.startsWith("Explanation", ignoreCase = true) }
+        .map { it.replace(Regex("^\\(?[A-Da-d][.)]\\s*"), "") }
+    if (options.isEmpty()) return null
+    return MiniBookMcq(number, question, options)
+}
+
+@Composable
+private fun MiniBookMcqCard(mcq: MiniBookMcq) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(0.dp))
+            .padding(vertical = 18.dp, horizontal = 20.dp)
+    ) {
+        Text(
+            "Q${mcq.number}. ${mcq.question}",
+            fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A), lineHeight = 25.sp
+        )
+        Spacer(Modifier.height(14.dp))
+        mcq.options.forEach { opt ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+                    .background(Color(0xFFF2F2F2), RoundedCornerShape(10.dp))
+                    .padding(vertical = 16.dp, horizontal = 18.dp)
+            ) {
+                Text(opt, fontSize = 15.sp, color = Color(0xFF5B5F6B))
             }
         }
     }
