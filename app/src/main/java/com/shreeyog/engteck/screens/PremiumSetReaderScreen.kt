@@ -1,5 +1,13 @@
 package com.shreeyog.engteck.screens
 
+import android.content.ContentValues
+import android.graphics.Color as AColor
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,10 +22,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.database.FirebaseDatabase
+import java.io.File
+import java.io.FileOutputStream
 
 private data class PremiumQuestion(
     val number: String,
@@ -27,29 +38,180 @@ private data class PremiumQuestion(
 )
 
 private fun parsePremiumQuestions(raw: String): List<PremiumQuestion> {
-    return raw.trim().split(Regex("\n\\s*\n")).mapNotNull { block ->
-        val lines = block.trim().lines().map { it.trim() }.filter { it.isNotEmpty() }
-        if (lines.isEmpty()) return@mapNotNull null
-        val firstLine = lines[0]
-        val numMatch = Regex("^(\\d+)\\.\\s*(.*)").find(firstLine) ?: return@mapNotNull null
-        val number = numMatch.groupValues[1]
-        val question = numMatch.groupValues[2]
-        val options = mutableListOf<String>()
+    if (raw.isBlank()) return emptyList()
+    val parts = raw.split(Regex("\n(?=\\s*\\d+[.)]\\s)"))
+    return parts.map { it.trim() }.filter { it.isNotEmpty() }.mapIndexed { i, block ->
+        val lines = block.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+        val question = (lines.getOrNull(0) ?: "").replace(Regex("^\\d+[.)]\\s*"), "")
         var correctAnswer = ""
-        for (i in 1 until lines.size) {
-            val line = lines[i]
-            if (line.startsWith("Correct Answer:")) {
-                correctAnswer = line.removePrefix("Correct Answer:").trim()
-            } else if (Regex("^[A-D]\\)").containsMatchIn(line)) {
-                options.add(line)
+        val cleanOptions = mutableListOf<String>()
+        lines.drop(1).forEach { line ->
+            val m = Regex("^Correct Answer:\\s*([A-D])", RegexOption.IGNORE_CASE).find(line)
+            if (m != null) correctAnswer = m.groupValues[1].uppercase()
+            else if (!line.startsWith("Explanation:", ignoreCase = true)) cleanOptions.add(line)
+        }
+        PremiumQuestion((i + 1).toString(), question, cleanOptions, correctAnswer)
+    }
+}
+private fun premiumOptionLetter(opt: String, idx: Int): String {
+    val m = Regex("^\\(?([A-Da-d])[.)]").find(opt)
+    return if (m != null) m.groupValues[1].uppercase() else ('A' + idx).toString()
+}
+private fun premiumOptionText(opt: String): String = opt.replace(Regex("^\\(?[A-Da-d][.)]\\s*"), "")
+
+private fun wrapPremiumText(text: String, paint: Paint, maxWidth: Float): List<String> {
+    val words = text.split(" ")
+    val lines = mutableListOf<String>()
+    var current = StringBuilder()
+    for (word in words) {
+        val test = if (current.isEmpty()) word else "$current $word"
+        if (paint.measureText(test) > maxWidth && current.isNotEmpty()) {
+            lines.add(current.toString())
+            current = StringBuilder(word)
+        } else {
+            current = StringBuilder(test)
+        }
+    }
+    if (current.isNotEmpty()) lines.add(current.toString())
+    return lines
+}
+
+private fun buildPremiumPdfDocument(title: String, questions: List<PremiumQuestion>): PdfDocument {
+    val pageWidth = 595
+    val pageHeight = 842
+    val leftMargin = 24f
+    val rightMargin = 24f
+    val contentWidth = pageWidth - leftMargin - rightMargin
+    val document = PdfDocument()
+
+    val titlePaint = Paint().apply { color = AColor.WHITE; textSize = 20f; isFakeBoldText = true }
+    val subtitlePaint = Paint().apply { color = AColor.argb(200, 255, 255, 255); textSize = 11f }
+    val bandPaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
+    val goldPaint = Paint().apply { color = AColor.rgb(0xD4, 0xA0, 0x17) }
+    val cardBgEven = Paint().apply { color = AColor.WHITE }
+    val cardBgOdd = Paint().apply { color = AColor.rgb(0xF5, 0xF3, 0xEC) }
+    val dividerPaint = Paint().apply { color = AColor.rgb(0xD4, 0xA0, 0x17); strokeWidth = 1.5f }
+    val borderPaint = Paint().apply {
+        color = AColor.rgb(0xD4, 0xA0, 0x17)
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+    }
+    val circlePaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
+    val circleTextPaint = Paint().apply { color = AColor.WHITE; textSize = 11f; isFakeBoldText = true; textAlign = Paint.Align.CENTER }
+    val qPaint = Paint().apply { color = AColor.rgb(0x1A, 0x1A, 0x1A); textSize = 13f; isFakeBoldText = true }
+    val optGreenPaint = Paint().apply { color = AColor.rgb(0x1F, 0x7A, 0x3D); textSize = 12f; isFakeBoldText = true }
+    val optRedPaint = Paint().apply { color = AColor.rgb(0xC0, 0x39, 0x2B); textSize = 12f }
+
+    var pageNumber = 1
+    var page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+    var canvas = page.canvas
+
+    fun drawHeader() {
+        canvas.drawRect(0f, 0f, pageWidth.toFloat(), 64f, bandPaint)
+        canvas.drawRect(0f, 60f, pageWidth.toFloat(), 64f, goldPaint)
+        canvas.drawText(title, leftMargin, 32f, titlePaint)
+        canvas.drawText("Shree English Classes — Premium", leftMargin, 50f, subtitlePaint)
+    }
+    fun drawPageBorder() {
+        canvas.drawRect(4f, 4f, pageWidth - 4f, pageHeight - 4f, borderPaint)
+    }
+
+    drawHeader()
+    var y = 64f
+    val marginBottom = 790f
+    val textStartX = leftMargin + 34f
+    val textWidth = contentWidth - 34f
+
+    questions.forEachIndexed { index, q ->
+        val qLines = wrapPremiumText("${q.number}. ${q.question}", qPaint, textWidth)
+        var blockHeight = 20f + (qLines.size * 16f)
+        q.options.forEachIndexed { idx, opt ->
+            blockHeight += wrapPremiumText("${premiumOptionLetter(opt, idx)}) ${premiumOptionText(opt)}", optRedPaint, textWidth - 10f).size * 15f
+        }
+        blockHeight += 12f
+
+        if (y + blockHeight > marginBottom) {
+            drawPageBorder()
+            document.finishPage(page)
+            pageNumber++
+            page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+            canvas = page.canvas
+            y = 24f
+        }
+
+        val cardTop = y
+        val bandPaintToUse = if (index % 2 == 0) cardBgEven else cardBgOdd
+        canvas.drawRect(0f, cardTop, pageWidth.toFloat(), cardTop + blockHeight, bandPaintToUse)
+
+        val circleCy = cardTop + 22f
+        canvas.drawCircle(leftMargin + 11f, circleCy, 11f, circlePaint)
+        canvas.drawText(q.number, leftMargin + 11f, circleCy + 4f, circleTextPaint)
+
+        var lineY = cardTop + 20f
+        qLines.forEach { line ->
+            canvas.drawText(line, textStartX, lineY, qPaint)
+            lineY += 16f
+        }
+        lineY += 4f
+
+        val correctLetter = q.correctAnswer.trim()
+        q.options.forEachIndexed { idx, opt ->
+            val letter = premiumOptionLetter(opt, idx)
+            val isCorrect = letter == correctLetter
+            val paintToUse = if (isCorrect) optGreenPaint else optRedPaint
+            val prefix = if (isCorrect) "✓ " else "✗ "
+            val optLines = wrapPremiumText("$prefix$letter) ${premiumOptionText(opt)}", paintToUse, textWidth - 10f)
+            optLines.forEach { line ->
+                canvas.drawText(line, textStartX + 10f, lineY, paintToUse)
+                lineY += 15f
             }
         }
-        PremiumQuestion(number, question, options, correctAnswer)
+
+        canvas.drawLine(0f, cardTop + blockHeight, pageWidth.toFloat(), cardTop + blockHeight, dividerPaint)
+        y = cardTop + blockHeight
+    }
+    drawPageBorder()
+    document.finishPage(page)
+    return document
+}
+
+private fun savePremiumPdfToDownloads(context: android.content.Context, title: String, questions: List<PremiumQuestion>): String? {
+    return try {
+        val document = buildPremiumPdfDocument(title, questions)
+        val safeTitle = title.replace(Regex("[^a-zA-Z0-9]"), "_")
+        val fileName = "$safeTitle.pdf"
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { out -> document.writeTo(out) }
+                document.close()
+                "Downloads/$fileName"
+            } else {
+                document.close(); null
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val file = File(downloadsDir, fileName)
+            FileOutputStream(file).use { document.writeTo(it) }
+            document.close()
+            file.absolutePath
+        }
+    } catch (e: Exception) {
+        null
     }
 }
 
 @Composable
 fun PremiumSetReaderScreen(catKey: String, setKey: String, setTitle: String, onBack: () -> Unit) {
+    val context = LocalContext.current
     var loading by remember { mutableStateOf(true) }
     var questions by remember { mutableStateOf<List<PremiumQuestion>>(emptyList()) }
     var showAnswers by remember { mutableStateOf(true) }
@@ -120,12 +282,21 @@ fun PremiumSetReaderScreen(catKey: String, setKey: String, setTitle: String, onB
             }
         } else {
             LazyColumn(
-                modifier = Modifier.weight(1f).padding(horizontal = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 items(questions) { q ->
-                    Column(modifier = Modifier.padding(bottom = 18.dp)) {
-                        Row(verticalAlignment = Alignment.Top) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White, RoundedCornerShape(16.dp))
+                            .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(16.dp))
+                            .padding(bottom = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
                             Box(
                                 modifier = Modifier.size(26.dp).clip(CircleShape).background(Color(0xFF12203D)),
                                 contentAlignment = Alignment.Center
@@ -135,11 +306,10 @@ fun PremiumSetReaderScreen(catKey: String, setKey: String, setTitle: String, onB
                             Spacer(Modifier.width(10.dp))
                             Text(q.question, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
                         }
-                        Spacer(Modifier.height(10.dp))
-                        Column(modifier = Modifier.padding(start = 36.dp)) {
+                        Column(modifier = Modifier.padding(horizontal = 18.dp)) {
                             val userSelected = selectedAnswers[q.number]
-                            q.options.forEach { opt ->
-                                val optLetter = opt.substringBefore(")").trim()
+                            q.options.forEachIndexed { optIdx, opt ->
+                                val optLetter = premiumOptionLetter(opt, optIdx)
                                 val correctLetter = q.correctAnswer.trim()
                                 val isSelected = userSelected == optLetter
                                 val isCorrectOption = optLetter == correctLetter
@@ -161,15 +331,12 @@ fun PremiumSetReaderScreen(catKey: String, setKey: String, setTitle: String, onB
                                     else -> Color(0xFF5B5F6B)
                                 }
                                 val borderColor = when {
-                                    showAnswers -> Color(0xFFE3DFD3)
-                                    bgColor == Color.Transparent -> Color(0xFFCFCAC0)
+                                    showAnswers -> Color(0xFFF0EEE7)
+                                    bgColor == Color.Transparent -> Color(0xFFE3DFD3)
                                     else -> textColor
                                 }
-                                val boxBg = when {
-                                    showAnswers -> Color.White
-                                    bgColor == Color.Transparent -> Color(0xFFFAF8F3)
-                                    else -> bgColor
-                                }
+                                // Always solid white when idle — matches the Free Set reader's look.
+                                val boxBg = if (bgColor == Color.Transparent) Color.White else bgColor
 
                                 Box(
                                     modifier = Modifier
@@ -184,7 +351,7 @@ fun PremiumSetReaderScreen(catKey: String, setKey: String, setTitle: String, onB
                                         .padding(vertical = 12.dp, horizontal = 14.dp)
                                 ) {
                                     Text(
-                                        opt,
+                                        "$optLetter) ${premiumOptionText(opt)}",
                                         fontSize = 14.sp,
                                         color = if (showAnswers) Color(0xFF1A1A1A) else textColor,
                                         fontWeight = if (bgColor != Color.Transparent) FontWeight.Bold else FontWeight.Normal
@@ -201,8 +368,27 @@ fun PremiumSetReaderScreen(catKey: String, setKey: String, setTitle: String, onB
                                 )
                             }
                         }
-                        Spacer(Modifier.height(10.dp))
-                        HorizontalDivider(color = Color(0xFFE3DFD3))
+                    }
+                }
+                item { Spacer(Modifier.height(10.dp)) }
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFFE85D4C))
+                            .clickable {
+                                val path = savePremiumPdfToDownloads(context, setTitle, questions)
+                                if (path != null) {
+                                    Toast.makeText(context, "Saved to $path", Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(context, "Failed to save PDF", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            .padding(vertical = 14.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("↓ Download PDF", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
                 item { Spacer(Modifier.height(40.dp)) }
