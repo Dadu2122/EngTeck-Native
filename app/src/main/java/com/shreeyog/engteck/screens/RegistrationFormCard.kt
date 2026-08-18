@@ -1,6 +1,8 @@
 package com.shreeyog.engteck.screens
 
 import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,9 +18,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.database.FirebaseDatabase
-import com.shreeyog.engteck.payment.RazorpayBridge
+import com.shreeyog.engteck.payment.buildRazorpayCheckoutIntent
 import com.shreeyog.engteck.payment.createRazorpayOrder
-import com.shreeyog.engteck.payment.openRazorpayCheckout
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -76,9 +77,57 @@ fun RegistrationFormCard() {
     var payMsg by remember { mutableStateOf("") }
     var submitting by remember { mutableStateOf(false) }
     var statusMsg by remember { mutableStateOf("") }
+    var upiId by remember { mutableStateOf("") }
+    var regKey by remember { mutableStateOf("") }
+    var checkingManual by remember { mutableStateOf(false) }
+    var manualMsg by remember { mutableStateOf("") }
+
+    val checkoutLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val paymentId = result.data?.getStringExtra("paymentId")
+            if (!paymentId.isNullOrEmpty() && regKey.isNotEmpty()) {
+                payMsg = "Payment successful! Confirming…"
+                scope.launch {
+                    var attemptsLeft = 20
+                    var confirmed = false
+                    while (attemptsLeft > 0 && !confirmed) {
+                        val snap = FirebaseDatabase.getInstance()
+                            .getReference("paidMiniBooks").child(mobile).child(regKey)
+                            .getValueOnceOrNull()
+                        if (snap == true) {
+                            confirmed = true
+                            paid = true
+                            payingInProgress = false
+                            payMsg = "Payment confirmed ✓"
+                        } else {
+                            attemptsLeft--
+                            delay(2000)
+                        }
+                    }
+                    if (!confirmed) {
+                        payingInProgress = false
+                        payMsg = "Payment कन्फर्म होने में ज़्यादा time लग रहा है — थोड़ी देर बाद दोबारा ट्राई करो।"
+                    }
+                }
+            } else {
+                payingInProgress = false
+                payMsg = "Payment हो गया लेकिन confirm नहीं हो पाया — दोबारा ट्राई करो।"
+            }
+        } else {
+            payingInProgress = false
+            val err = result.data?.getStringExtra("error")
+            payMsg = err ?: "Payment window बंद हो गई। दोबारा \"Pay Now\" दबाओ।"
+        }
+    }
 
     val examOptions = listOf("TGT", "PGT", "LT", "GIC Lecturer", "UPPSC", "UPHESC")
     val catKey = EXAM_TO_CATKEY[exam]
+
+    LaunchedEffect(Unit) {
+        FirebaseDatabase.getInstance().getReference("content").child("upiId")
+            .get()
+            .addOnSuccessListener { s -> upiId = s.getValue(String::class.java) ?: "" }
+    }
     val durationOptions = when {
         catKey == null -> emptyList()
         planType == "withVideos" -> PLAN_DURATION_OPTIONS_LIVE[catKey] ?: emptyList()
@@ -95,6 +144,8 @@ fun RegistrationFormCard() {
     fun resetPaymentState() {
         paid = false
         payMsg = ""
+        manualMsg = ""
+        regKey = ""
     }
 
     fun resetPlanFields() {
@@ -217,6 +268,9 @@ fun RegistrationFormCard() {
                 }
 
                 if (amount != null) {
+                    if (regKey.isEmpty()) {
+                        regKey = "reg_" + System.currentTimeMillis()
+                    }
                     Spacer(Modifier.height(14.dp))
                     Column(
                         modifier = Modifier
@@ -243,14 +297,12 @@ fun RegistrationFormCard() {
                                         payMsg = "पहले ऊपर अपना 10-digit mobile number भर दो।"
                                         return@Button
                                     }
-                                    val activity = context as? Activity
-                                    if (activity == null) {
+                                    if (context !is Activity) {
                                         payMsg = "Payment शुरू नहीं हो पाया। दोबारा कोशिश करो।"
                                         return@Button
                                     }
                                     payingInProgress = true
                                     payMsg = "Loading payment window…"
-                                    val regKey = "reg_" + System.currentTimeMillis()
                                     val examLabel = exam
                                     scope.launch {
                                         val order = createRazorpayOrder(
@@ -264,44 +316,15 @@ fun RegistrationFormCard() {
                                             payMsg = "Instant payment अभी सेट अप नहीं हुआ या server से जवाब नहीं मिला। थोड़ी देर बाद ट्राई करो।"
                                             return@launch
                                         }
-                                        RazorpayBridge.setCallbacks(
-                                            onSuccess = {
-                                                payMsg = "Payment successful! Confirming…"
-                                                scope.launch {
-                                                    var attemptsLeft = 20
-                                                    var confirmed = false
-                                                    while (attemptsLeft > 0 && !confirmed) {
-                                                        val snap = FirebaseDatabase.getInstance()
-                                                            .getReference("paidMiniBooks").child(mobile).child(regKey)
-                                                            .getValueOnceOrNull()
-                                                        if (snap == true) {
-                                                            confirmed = true
-                                                            paid = true
-                                                            payingInProgress = false
-                                                            payMsg = "Payment confirmed ✓"
-                                                        } else {
-                                                            attemptsLeft--
-                                                            delay(2000)
-                                                        }
-                                                    }
-                                                    if (!confirmed) {
-                                                        payingInProgress = false
-                                                        payMsg = "Payment कन्फर्म होने में ज़्यादा time लग रहा है — थोड़ी देर बाद दोबारा ट्राई करो।"
-                                                    }
-                                                }
-                                            },
-                                            onError = { _, _ ->
-                                                payingInProgress = false
-                                                payMsg = "Payment window बंद हो गई या fail हो गई। दोबारा \"Pay Now\" दबाओ।"
-                                            }
-                                        )
-                                        openRazorpayCheckout(
-                                            activity = activity,
+                                        payMsg = ""
+                                        val intent = buildRazorpayCheckoutIntent(
+                                            context = context,
                                             order = order,
                                             mobile = mobile,
                                             description = "Registration — $examLabel",
                                             coachingName = "Shree English Classes"
                                         )
+                                        checkoutLauncher.launch(intent)
                                     }
                                 },
                                 enabled = !payingInProgress,
@@ -310,6 +333,72 @@ fun RegistrationFormCard() {
                                 modifier = Modifier.fillMaxWidth().height(46.dp)
                             ) {
                                 Text(if (payingInProgress) "Please wait..." else "⚡ Pay Now — Instant Verify", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+
+                            if (upiId.isNotEmpty()) {
+                                Spacer(Modifier.height(14.dp))
+                                Text("— OR —", fontSize = 11.sp, color = Color(0xFF9B968A))
+                                Spacer(Modifier.height(10.dp))
+                                Text("Scan & Pay via any UPI app", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
+                                Spacer(Modifier.height(10.dp))
+
+                                val upiLink = "upi://pay?pa=" + java.net.URLEncoder.encode(upiId, "UTF-8") +
+                                    "&pn=" + java.net.URLEncoder.encode("Shree English Classes", "UTF-8") +
+                                    "&am=" + amount + "&cu=INR"
+                                val qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=" +
+                                    java.net.URLEncoder.encode(upiLink, "UTF-8")
+
+                                coil.compose.AsyncImage(
+                                    model = qrUrl,
+                                    contentDescription = "UPI QR Code",
+                                    modifier = Modifier.size(180.dp).background(Color.White, RoundedCornerShape(10.dp)).padding(8.dp)
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text("UPI ID: $upiId", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1B6B79))
+                                Spacer(Modifier.height(10.dp))
+
+                                Button(
+                                    onClick = {
+                                        if (mobile.length != 10) {
+                                            manualMsg = "पहले ऊपर अपना 10-digit mobile number भर दो।"
+                                            return@Button
+                                        }
+                                        checkingManual = true
+                                        manualMsg = "Checking…"
+                                        scope.launch {
+                                            var attemptsLeft = 5
+                                            var confirmed = false
+                                            while (attemptsLeft > 0 && !confirmed) {
+                                                val snap = FirebaseDatabase.getInstance()
+                                                    .getReference("paidMiniBooks").child(mobile).child(regKey)
+                                                    .getValueOnceOrNull()
+                                                if (snap == true) {
+                                                    confirmed = true
+                                                    paid = true
+                                                    checkingManual = false
+                                                    manualMsg = "Payment confirmed ✓"
+                                                } else {
+                                                    attemptsLeft--
+                                                    if (attemptsLeft > 0) delay(1500)
+                                                }
+                                            }
+                                            if (!confirmed) {
+                                                checkingManual = false
+                                                manualMsg = "अभी तक payment confirm नहीं हुआ। Payment karne ke baad thodi der wait karke dobara try karo."
+                                            }
+                                        }
+                                    },
+                                    enabled = !checkingManual,
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B6B79)),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                                ) {
+                                    Text(if (checkingManual) "Checking..." else "I've Paid — Check Access", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                                if (manualMsg.isNotEmpty()) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(manualMsg, fontSize = 11.5.sp, color = if (paid) Color(0xFF1F7A3D) else Color(0xFFC0392B))
+                                }
                             }
                         }
                         if (payMsg.isNotEmpty()) {
