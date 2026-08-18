@@ -31,7 +31,7 @@ data class MiniBook(
     val addedAt: Long,
     val downloads: Long,
     val price: Long = 0L,
-    val coverImageUrl: String? = null
+    val coverImageBase64: String? = null
 )
 
 private val MINIBOOK_PALETTES = listOf(
@@ -68,8 +68,8 @@ fun MiniBooksScreen(onBookClick: (key: String, title: String) -> Unit) {
                     val addedAt = child.child("addedAt").getValue(Long::class.java) ?: 0L
                     val downloads = child.child("downloads").getValue(Long::class.java) ?: 0L
                     val price = child.child("price").getValue(Long::class.java) ?: 0L
-                    val coverImageUrl = child.child("coverImageUrl").getValue(String::class.java)
-                    MiniBook(child.key ?: "", title, addedAt, downloads, price, coverImageUrl)
+                    val coverImageBase64 = child.child("coverImageBase64").getValue(String::class.java)
+                    MiniBook(child.key ?: "", title, addedAt, downloads, price, coverImageBase64)
                 }.sortedByDescending { it.addedAt }
                 books = list
             }
@@ -115,12 +115,12 @@ private fun MiniBookCard(book: MiniBook, onClick: () -> Unit) {
             .width(150.dp)
             .aspectRatio(3f / 4f)
             .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 10.dp))
-            .background(if (book.coverImageUrl == null) minibookGradient(book.title) else Brush.linearGradient(listOf(Color.Black, Color.Black)))
+            .background(if (book.coverImageBase64 == null) minibookGradient(book.title) else Brush.linearGradient(listOf(Color.Black, Color.Black)))
             .clickable(onClick = onClick)
     ) {
-        if (book.coverImageUrl != null) {
+        if (book.coverImageBase64 != null) {
             AsyncImage(
-                model = book.coverImageUrl,
+                model = book.coverImageBase64,
                 contentDescription = book.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -147,7 +147,7 @@ private fun MiniBookCard(book: MiniBook, onClick: () -> Unit) {
                 .padding(start = 20.dp, top = 14.dp, end = 12.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            if (book.coverImageUrl == null) Text("📖", fontSize = 20.sp) else Spacer(Modifier.height(1.dp))
+            if (book.coverImageBase64 == null) Text("📖", fontSize = 20.sp) else Spacer(Modifier.height(1.dp))
             Column {
                 Text(
                     book.title,
