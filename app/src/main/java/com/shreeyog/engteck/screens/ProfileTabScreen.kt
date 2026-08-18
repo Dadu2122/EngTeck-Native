@@ -94,6 +94,8 @@ private fun AdminPanelScreen() {
         Spacer(Modifier.height(10.dp))
         AdminAccordionSection("Writers & Works", "✍️") { AdminWritersCard() }
         Spacer(Modifier.height(10.dp))
+        AdminAccordionSection("Syllabus", "📘") { AdminSyllabusCard() }
+        Spacer(Modifier.height(10.dp))
         AdminAccordionSection("Topic Sections", "📖") { AdminTopicSectionsCard() }
         Spacer(Modifier.height(10.dp))
         AdminAccordionSection("Daily Practice", "🔥") { AdminDailyPracticeCard() }
