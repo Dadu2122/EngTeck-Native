@@ -6,6 +6,7 @@ import android.graphics.pdf.PdfDocument
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Base64
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,15 +30,11 @@ import coil.compose.AsyncImage
 import com.google.firebase.database.FirebaseDatabase
 import com.shreeyog.engteck.payment.buildRazorpayCheckoutIntent
 import com.shreeyog.engteck.payment.createRazorpayOrder
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 
 private const val MINIBOOK_FREE_SECTIONS = 5
 
@@ -116,39 +113,36 @@ private fun saveMiniBookTextPdf(context: android.content.Context, title: String,
     }
 }
 
-private suspend fun downloadPdfFromUrl(context: android.content.Context, url: String, title: String): String? {
-    return withContext(Dispatchers.IO) {
-        try {
-            val conn = (URL(url).openConnection() as HttpURLConnection)
-            conn.connectTimeout = 15000
-            conn.readTimeout = 30000
-            val bytes = conn.inputStream.use { it.readBytes() }
-            conn.disconnect()
-
-            val safeTitle = title.replace(Regex("[^a-zA-Z0-9]"), "_")
-            val fileName = "$safeTitle.pdf"
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val resolver = context.contentResolver
-                val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                }
-                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                if (uri != null) {
-                    resolver.openOutputStream(uri)?.use { it.write(bytes) }
-                    "Downloads/$fileName"
-                } else null
-            } else {
-                @Suppress("DEPRECATION")
-                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                val file = File(downloadsDir, fileName)
-                FileOutputStream(file).use { it.write(bytes) }
-                file.absolutePath
+// Decodes a "data:application/pdf;base64,...." string straight from Realtime Database and
+// writes the bytes to the Downloads folder — no network fetch needed since the file already
+// came down with the rest of the book's data.
+private fun savePdfBase64ToDownloads(context: android.content.Context, pdfBase64: String, title: String): String? {
+    return try {
+        val raw = if (pdfBase64.contains(",")) pdfBase64.substringAfter(",") else pdfBase64
+        val bytes = Base64.decode(raw, Base64.DEFAULT)
+        val safeTitle = title.replace(Regex("[^a-zA-Z0-9]"), "_")
+        val fileName = "$safeTitle.pdf"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
             }
-        } catch (e: Exception) {
-            null
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { it.write(bytes) }
+                "Downloads/$fileName"
+            } else null
+        } else {
+            @Suppress("DEPRECATION")
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val file = File(downloadsDir, fileName)
+            FileOutputStream(file).use { it.write(bytes) }
+            file.absolutePath
         }
+    } catch (e: Exception) {
+        null
     }
 }
 
@@ -166,9 +160,10 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
 
     var loading by remember { mutableStateOf(true) }
     var content by remember { mutableStateOf<String?>(null) }
+    var pdfBase64 by remember { mutableStateOf<String?>(null) }
     var price by remember { mutableStateOf(0L) }
-    var coverImageUrl by remember { mutableStateOf<String?>(null) }
-    var pdfUrl by remember { mutableStateOf<String?>(null) }
+    var coverImageBase64 by remember { mutableStateOf<String?>(null) }
+    var hasPdf by remember { mutableStateOf(false) }
 
     var unlocked by remember { mutableStateOf(prefs.getBoolean("sp_minibookpaid_$bookKey", false)) }
     var mobile by remember { mutableStateOf(prefs.getString("sp_mobile", "") ?: "") }
@@ -182,6 +177,14 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
     fun incrementDownloadsAndMarkUnlocked() {
         prefs.edit().putBoolean("sp_minibookpaid_$bookKey", true).apply()
         unlocked = true
+        val ref = FirebaseDatabase.getInstance().getReference("miniBooks").child(bookKey).child("downloads")
+        ref.get().addOnSuccessListener { snap ->
+            val current = snap.getValue(Long::class.java) ?: 0L
+            ref.setValue(current + 1)
+        }
+    }
+
+    fun bumpFreeDownload() {
         val ref = FirebaseDatabase.getInstance().getReference("miniBooks").child(bookKey).child("downloads")
         ref.get().addOnSuccessListener { snap ->
             val current = snap.getValue(Long::class.java) ?: 0L
@@ -223,7 +226,7 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
         } else {
             payingInProgress = false
             val err = result.data?.getStringExtra("error")
-            payMsg = err ?: "Payment window band ho gayi. Dobara \"Pay Now\" dabao."
+            payMsg = err ?: "Payment window closed. Tap \"Pay Now\" to try again."
         }
     }
 
@@ -232,15 +235,16 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
         db.getReference("miniBooks").child(bookKey).get()
             .addOnSuccessListener { s ->
                 price = s.child("price").getValue(Long::class.java) ?: 0L
-                coverImageUrl = s.child("coverImageUrl").getValue(String::class.java)
-                pdfUrl = s.child("pdfUrl").getValue(String::class.java)
+                coverImageBase64 = s.child("coverImageBase64").getValue(String::class.java)
+                hasPdf = s.child("hasPdf").getValue(Boolean::class.java) ?: false
             }
         db.getReference("content").child("upiId").get()
             .addOnSuccessListener { upiId = it.getValue(String::class.java) ?: "" }
-        db.getReference("miniBooksContent").child(bookKey).child("pastedText").get()
+        db.getReference("miniBooksContent").child(bookKey).get()
             .addOnSuccessListener { snapshot ->
                 loading = false
-                content = snapshot.getValue(String::class.java)
+                content = snapshot.child("pastedText").getValue(String::class.java)
+                pdfBase64 = snapshot.child("pdfBase64").getValue(String::class.java)
             }
             .addOnFailureListener { loading = false }
     }
@@ -302,9 +306,9 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
                 .padding(horizontal = 20.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            if (coverImageUrl != null) {
+            if (coverImageBase64 != null) {
                 AsyncImage(
-                    model = coverImageUrl,
+                    model = coverImageBase64,
                     contentDescription = title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxWidth().height(200.dp).background(Color(0xFFF5F3EC), RoundedCornerShape(14.dp))
@@ -318,7 +322,7 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
                 Box(Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Color(0xFF12203D))
                 }
-            } else if (pdfUrl != null) {
+            } else if (hasPdf) {
                 if (price == 0L || unlocked) {
                     Text(
                         if (unlocked) "Payment confirmed ✓ — you can now download the full PDF." else "This book is free.",
@@ -327,16 +331,13 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
                     Spacer(Modifier.height(14.dp))
                     Button(
                         onClick = {
-                            scope.launch {
-                                val path = downloadPdfFromUrl(context, pdfUrl!!, title)
+                            val pb64 = pdfBase64
+                            if (pb64 == null) {
+                                Toast.makeText(context, "PDF data not found", Toast.LENGTH_SHORT).show()
+                            } else {
+                                val path = savePdfBase64ToDownloads(context, pb64, title)
                                 if (path != null) {
-                                    if (price == 0L) {
-                                        val ref = FirebaseDatabase.getInstance().getReference("miniBooks").child(bookKey).child("downloads")
-                                        ref.get().addOnSuccessListener { snap ->
-                                            val current = snap.getValue(Long::class.java) ?: 0L
-                                            ref.setValue(current + 1)
-                                        }
-                                    }
+                                    if (price == 0L) bumpFreeDownload()
                                     Toast.makeText(context, "Saved to $path", Toast.LENGTH_LONG).show()
                                 } else {
                                     Toast.makeText(context, "Download failed, try again", Toast.LENGTH_SHORT).show()
@@ -395,13 +396,7 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
                         onClick = {
                             val path = saveMiniBookTextPdf(context, title, content ?: "")
                             if (path != null) {
-                                if (price == 0L) {
-                                    val ref = FirebaseDatabase.getInstance().getReference("miniBooks").child(bookKey).child("downloads")
-                                    ref.get().addOnSuccessListener { snap ->
-                                        val current = snap.getValue(Long::class.java) ?: 0L
-                                        ref.setValue(current + 1)
-                                    }
-                                }
+                                if (price == 0L) bumpFreeDownload()
                                 Toast.makeText(context, "Saved to $path", Toast.LENGTH_LONG).show()
                             } else {
                                 Toast.makeText(context, "Download failed, try again", Toast.LENGTH_SHORT).show()
