@@ -1,9 +1,11 @@
 package com.shreeyog.engteck.screens
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,31 +25,60 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.storage.FirebaseStorage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 
-data class AdminMiniBookEntry(
-    val key: String,
-    val title: String,
-    val price: Long,
-    val downloads: Long,
-    val coverImageUrl: String?,
-    val pdfUrl: String?
-)
+data class AdminMiniBookEntry(val key: String, val title: String, val price: Long, val downloads: Long)
+
+private fun readBytes(context: android.content.Context, uri: Uri): ByteArray? {
+    return try {
+        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+    } catch (e: Exception) {
+        null
+    }
+}
+
+private fun compressImageToBase64(context: android.content.Context, uri: Uri, maxWidth: Int = 500, quality: Int = 70): String? {
+    return try {
+        val input = context.contentResolver.openInputStream(uri) ?: return null
+        val original = BitmapFactory.decodeStream(input)
+        input.close()
+        if (original == null) return null
+        val scale = if (original.width > maxWidth) maxWidth.toFloat() / original.width else 1f
+        val resized = if (scale < 1f) {
+            Bitmap.createScaledBitmap(original, (original.width * scale).toInt(), (original.height * scale).toInt(), true)
+        } else original
+        val out = ByteArrayOutputStream()
+        resized.compress(Bitmap.CompressFormat.JPEG, quality, out)
+        "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+    } catch (e: Exception) {
+        null
+    }
+}
 
 @Composable
 fun AdminMiniBookUploadCard() {
     val context = LocalContext.current
-    var mode by remember { mutableStateOf("text") } // "text" | "pdf"
+    val scope = rememberCoroutineScope()
+    var mode by remember { mutableStateOf("text") }
     var title by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
     var pdfUri by remember { mutableStateOf<Uri?>(null) }
+    var pdfFileSizeKb by remember { mutableStateOf(0) }
     var coverUri by remember { mutableStateOf<Uri?>(null) }
     var saving by remember { mutableStateOf(false) }
-    var uploadProgress by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("") }
 
-    val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) pdfUri = uri }
+    val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            pdfUri = uri
+            val bytes = readBytes(context, uri)
+            pdfFileSizeKb = (bytes?.size ?: 0) / 1024
+        }
+    }
     val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) coverUri = uri }
 
     var books by remember { mutableStateOf<List<AdminMiniBookEntry>>(emptyList()) }
@@ -67,9 +98,7 @@ fun AdminMiniBookUploadCard() {
                         key,
                         c.child("title").getValue(String::class.java) ?: "Untitled",
                         c.child("price").getValue(Long::class.java) ?: 0L,
-                        c.child("downloads").getValue(Long::class.java) ?: 0L,
-                        c.child("coverImageUrl").getValue(String::class.java),
-                        c.child("pdfUrl").getValue(String::class.java)
+                        c.child("downloads").getValue(Long::class.java) ?: 0L
                     )
                 }.sortedByDescending { it.key }
             }
@@ -77,76 +106,64 @@ fun AdminMiniBookUploadCard() {
     }
 
     fun resetForm() {
-        title = ""; price = ""; content = ""; pdfUri = null; coverUri = null
+        title = ""; price = ""; content = ""; pdfUri = null; pdfFileSizeKb = 0; coverUri = null
     }
 
     fun uploadBook() {
         if (title.isBlank()) { status = "Please enter a title."; return }
         if (mode == "text" && content.isBlank()) { status = "Please paste the content."; return }
         if (mode == "pdf" && pdfUri == null) { status = "Please select a PDF file first."; return }
+        if (mode == "pdf" && pdfFileSizeKb > 8000) {
+            status = "This PDF is too large (${pdfFileSizeKb / 1024}MB). Please keep it under 8MB."
+            return
+        }
 
         saving = true
         status = ""
-        uploadProgress = ""
         val db = FirebaseDatabase.getInstance()
-        val storage = FirebaseStorage.getInstance()
         val newRef = db.getReference("miniBooks").push()
         val key = newRef.key
         if (key == null) { saving = false; status = "Could not generate a key."; return }
 
-        fun finalizeBookRecord(coverUrl: String?, pdfDownloadUrl: String?) {
+        scope.launch {
+            val coverBase64 = if (coverUri != null) {
+                withContext(Dispatchers.IO) { compressImageToBase64(context, coverUri!!) }
+            } else null
+
+            val pdfBase64 = if (mode == "pdf" && pdfUri != null) {
+                withContext(Dispatchers.IO) {
+                    val bytes = readBytes(context, pdfUri!!)
+                    if (bytes != null) "data:application/pdf;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP) else null
+                }
+            } else null
+
+            if (mode == "pdf" && pdfBase64 == null) {
+                saving = false
+                status = "Could not read the PDF file."
+                return@launch
+            }
+
             val bookData = mutableMapOf<String, Any>(
                 "title" to title,
                 "addedAt" to System.currentTimeMillis(),
                 "downloads" to 0,
                 "price" to (price.toLongOrNull() ?: 0L)
             )
-            if (coverUrl != null) bookData["coverImageUrl"] = coverUrl
-            if (pdfDownloadUrl != null) bookData["pdfUrl"] = pdfDownloadUrl
+            if (coverBase64 != null) bookData["coverImageBase64"] = coverBase64
+            if (pdfBase64 != null) bookData["hasPdf"] = true
 
             newRef.setValue(bookData)
                 .addOnSuccessListener {
-                    if (mode == "text") {
-                        db.getReference("miniBooksContent").child(key)
-                            .setValue(mapOf("pastedText" to content))
-                            .addOnSuccessListener { saving = false; status = "Book uploaded ✓"; resetForm(); refreshTick++ }
-                            .addOnFailureListener { saving = false; status = "Failed to save content" }
-                    } else {
-                        saving = false
-                        status = "Book uploaded ✓"
-                        resetForm()
-                        refreshTick++
-                    }
+                    val contentData = mutableMapOf<String, Any>()
+                    if (mode == "text") contentData["pastedText"] = content
+                    if (pdfBase64 != null) contentData["pdfBase64"] = pdfBase64
+
+                    db.getReference("miniBooksContent").child(key)
+                        .setValue(contentData)
+                        .addOnSuccessListener { saving = false; status = "Book uploaded ✓"; resetForm(); refreshTick++ }
+                        .addOnFailureListener { saving = false; status = "Failed to save content" }
                 }
                 .addOnFailureListener { saving = false; status = "Failed to upload" }
-        }
-
-        fun uploadPdfThenFinalize(coverUrl: String?) {
-            if (mode == "pdf" && pdfUri != null) {
-                uploadProgress = "Uploading PDF…"
-                val pdfRef = storage.reference.child("miniBookPdfs/$key.pdf")
-                pdfRef.putFile(pdfUri!!)
-                    .addOnSuccessListener {
-                        pdfRef.downloadUrl.addOnSuccessListener { url -> finalizeBookRecord(coverUrl, url.toString()) }
-                            .addOnFailureListener { saving = false; status = "Failed to get PDF link" }
-                    }
-                    .addOnFailureListener { saving = false; status = "PDF upload failed" }
-            } else {
-                finalizeBookRecord(coverUrl, null)
-            }
-        }
-
-        if (coverUri != null) {
-            uploadProgress = "Uploading cover…"
-            val coverRef = storage.reference.child("miniBookCovers/$key.jpg")
-            coverRef.putFile(coverUri!!)
-                .addOnSuccessListener {
-                    coverRef.downloadUrl.addOnSuccessListener { url -> uploadPdfThenFinalize(url.toString()) }
-                        .addOnFailureListener { saving = false; status = "Failed to get cover link" }
-                }
-                .addOnFailureListener { saving = false; status = "Cover upload failed" }
-        } else {
-            uploadPdfThenFinalize(null)
         }
     }
 
@@ -233,17 +250,17 @@ fun AdminMiniBookUploadCard() {
                 onValueChange = { content = it },
                 modifier = Modifier.fillMaxWidth().height(160.dp),
                 shape = RoundedCornerShape(10.dp),
-                placeholder = { Text("# Chapter Heading\n\nParagraph text yahan...") }
+                placeholder = { Text("# Chapter Heading\n\nParagraph text here...") }
             )
         } else {
-            Text("PDF File", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF5B5F6B))
+            Text("PDF File (max ~8MB)", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF5B5F6B))
             Spacer(Modifier.height(4.dp))
             OutlinedButton(
                 onClick = { pdfPicker.launch("application/pdf") },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text(if (pdfUri == null) "📄 Choose PDF File" else "📄 PDF Selected — Change")
+                Text(if (pdfUri == null) "📄 Choose PDF File" else "📄 PDF Selected (${pdfFileSizeKb}KB) — Change")
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -255,7 +272,7 @@ fun AdminMiniBookUploadCard() {
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth().height(46.dp)
         ) {
-            Text(if (saving) (uploadProgress.ifEmpty { "Uploading..." }) else "Upload Book", fontWeight = FontWeight.Bold)
+            Text(if (saving) "Uploading..." else "Upload Book", fontWeight = FontWeight.Bold)
         }
         if (status.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
@@ -284,7 +301,7 @@ fun AdminMiniBookUploadCard() {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(b.title, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
                                 Text(
-                                    "${if (b.price > 0) "₹${b.price}" else "Free"} · ${b.downloads} downloads · ${if (b.pdfUrl != null) "PDF" else "Text"}",
+                                    "${if (b.price > 0) "₹${b.price}" else "Free"} · ${b.downloads} downloads",
                                     fontSize = 10.5.sp, color = Color(0xFF5B5F6B)
                                 )
                             }
