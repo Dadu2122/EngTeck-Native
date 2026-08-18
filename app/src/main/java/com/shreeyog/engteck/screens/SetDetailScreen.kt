@@ -368,7 +368,7 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                 fontSize = 13.sp,
                                 color = Color(0xFF1F7A3D),
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 18.dp, top = 8.dp, bottom = 12.dp)
+                                modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 12.dp)
                             )
                         } else {
                             Spacer(Modifier.height(8.dp))
