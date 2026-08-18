@@ -13,10 +13,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.google.firebase.database.FirebaseDatabase
 import com.shreeyog.engteck.ui.theme.InkSoft
 import com.shreeyog.engteck.ui.theme.NavyDeep
@@ -27,7 +29,9 @@ data class MiniBook(
     val key: String,
     val title: String,
     val addedAt: Long,
-    val downloads: Long
+    val downloads: Long,
+    val price: Long = 0L,
+    val coverImageUrl: String? = null
 )
 
 private val MINIBOOK_PALETTES = listOf(
@@ -63,7 +67,9 @@ fun MiniBooksScreen(onBookClick: (key: String, title: String) -> Unit) {
                     val title = child.child("title").getValue(String::class.java) ?: return@mapNotNull null
                     val addedAt = child.child("addedAt").getValue(Long::class.java) ?: 0L
                     val downloads = child.child("downloads").getValue(Long::class.java) ?: 0L
-                    MiniBook(child.key ?: "", title, addedAt, downloads)
+                    val price = child.child("price").getValue(Long::class.java) ?: 0L
+                    val coverImageUrl = child.child("coverImageUrl").getValue(String::class.java)
+                    MiniBook(child.key ?: "", title, addedAt, downloads, price, coverImageUrl)
                 }.sortedByDescending { it.addedAt }
                 books = list
             }
@@ -109,9 +115,24 @@ private fun MiniBookCard(book: MiniBook, onClick: () -> Unit) {
             .width(150.dp)
             .aspectRatio(3f / 4f)
             .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 10.dp))
-            .background(minibookGradient(book.title))
+            .background(if (book.coverImageUrl == null) minibookGradient(book.title) else Brush.linearGradient(listOf(Color.Black, Color.Black)))
             .clickable(onClick = onClick)
     ) {
+        if (book.coverImageUrl != null) {
+            AsyncImage(
+                model = book.coverImageUrl,
+                contentDescription = book.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            // Dark gradient scrim at the bottom so title/text stays readable over any photo.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)), startY = 220f))
+            )
+        }
+
         Box(
             modifier = Modifier
                 .width(10.dp)
@@ -126,7 +147,7 @@ private fun MiniBookCard(book: MiniBook, onClick: () -> Unit) {
                 .padding(start = 20.dp, top = 14.dp, end = 12.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("📖", fontSize = 20.sp)
+            if (book.coverImageUrl == null) Text("📖", fontSize = 20.sp) else Spacer(Modifier.height(1.dp))
             Column {
                 Text(
                     book.title,
@@ -138,12 +159,23 @@ private fun MiniBookCard(book: MiniBook, onClick: () -> Unit) {
                     lineHeight = 17.sp
                 )
                 Spacer(Modifier.height(6.dp))
-                Box(
-                    modifier = Modifier
-                        .background(Color.Black.copy(alpha = 0.25f), RoundedCornerShape(100.dp))
-                        .padding(horizontal = 9.dp, vertical = 4.dp)
-                ) {
-                    Text("READ →", color = Color.White.copy(alpha = 0.85f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.25f), RoundedCornerShape(100.dp))
+                            .padding(horizontal = 9.dp, vertical = 4.dp)
+                    ) {
+                        Text("READ →", color = Color.White.copy(alpha = 0.85f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                    if (book.price > 0) {
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFFD4A017), RoundedCornerShape(100.dp))
+                                .padding(horizontal = 9.dp, vertical = 4.dp)
+                        ) {
+                            Text("₹${book.price}", color = Color(0xFF12203D), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
                 if (dateLabel.isNotEmpty()) {
                     Spacer(Modifier.height(6.dp))
