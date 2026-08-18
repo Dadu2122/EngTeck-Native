@@ -11,7 +11,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,6 +40,7 @@ fun AdminVideosRecordingsCard() {
 
     var addVideoOpen by remember { mutableStateOf(false) }
     var addRecordingOpen by remember { mutableStateOf(false) }
+    var markPaidOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(activeCat, activeTab, refreshTick) {
         loading = true
@@ -201,6 +201,15 @@ fun AdminVideosRecordingsCard() {
                 Text("+ Add Recording", fontWeight = FontWeight.Bold)
             }
         }
+        Spacer(Modifier.height(10.dp))
+        Button(
+            onClick = { markPaidOpen = true },
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B6B79), contentColor = Color.White),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().height(44.dp)
+        ) {
+            Text("🔓 Mark Video/Recording Access as Paid", fontWeight = FontWeight.Bold)
+        }
     }
 
     if (addVideoOpen) {
@@ -208,6 +217,67 @@ fun AdminVideosRecordingsCard() {
     }
     if (addRecordingOpen) {
         AddRecordingDialog(catKey = activeCat, onDismiss = { addRecordingOpen = false }, onSaved = { addRecordingOpen = false; refreshTick++ })
+    }
+    if (markPaidOpen) {
+        MarkVideoPaidDialog(
+            catKey = activeCat,
+            catLabel = VR_CATS.find { it.first == activeCat }?.second ?: activeCat,
+            onDismiss = { markPaidOpen = false }
+        )
+    }
+}
+
+@Composable
+private fun MarkVideoPaidDialog(catKey: String, catLabel: String, onDismiss: () -> Unit) {
+    var mobile by remember { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("") }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White, RoundedCornerShape(18.dp))
+                .padding(18.dp)
+        ) {
+            Text("Mark $catLabel Video Access as Paid", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
+            Spacer(Modifier.height(12.dp))
+            Text("Student Mobile Number", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF5B5F6B))
+            Spacer(Modifier.height(4.dp))
+            OutlinedTextField(
+                value = mobile,
+                onValueChange = { mobile = it.filter { c -> c.isDigit() }.take(10) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                singleLine = true,
+                placeholder = { Text("10-digit mobile number") }
+            )
+            if (status.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(status, fontSize = 11.5.sp, color = if (status.startsWith("Marked")) Color(0xFF1F7A3D) else Color(0xFFC0392B))
+            }
+            Spacer(Modifier.height(14.dp))
+            Button(
+                onClick = {
+                    if (mobile.length != 10) { status = "Please enter a valid 10-digit mobile number."; return@Button }
+                    saving = true
+                    FirebaseDatabase.getInstance().getReference("paidVideoCategories").child(mobile).child(catKey).setValue(true)
+                        .addOnSuccessListener {
+                            saving = false
+                            status = "Marked as paid ✓ — $mobile can now watch all $catLabel videos & recordings."
+                        }
+                        .addOnFailureListener { saving = false; status = "Failed to save." }
+                },
+                enabled = !saving,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4A017), contentColor = Color(0xFF12203D)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().height(44.dp)
+            ) {
+                Text(if (saving) "Saving..." else "Mark as Paid", fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(6.dp))
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Close") }
+        }
     }
 }
 
