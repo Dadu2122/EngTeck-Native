@@ -81,9 +81,9 @@ fun AdminMiniBookUploadCard() {
     }
 
     fun uploadBook() {
-        if (title.isBlank()) { status = "Title bharo."; return }
-        if (mode == "text" && content.isBlank()) { status = "Content paste karo."; return }
-        if (mode == "pdf" && pdfUri == null) { status = "Pehle PDF file select karo."; return }
+        if (title.isBlank()) { status = "Please enter a title."; return }
+        if (mode == "text" && content.isBlank()) { status = "Please paste the content."; return }
+        if (mode == "pdf" && pdfUri == null) { status = "Please select a PDF file first."; return }
 
         saving = true
         status = ""
@@ -92,7 +92,7 @@ fun AdminMiniBookUploadCard() {
         val storage = FirebaseStorage.getInstance()
         val newRef = db.getReference("miniBooks").push()
         val key = newRef.key
-        if (key == null) { saving = false; status = "Key generate nahi hua."; return }
+        if (key == null) { saving = false; status = "Could not generate a key."; return }
 
         fun finalizeBookRecord(coverUrl: String?, pdfDownloadUrl: String?) {
             val bookData = mutableMapOf<String, Any>(
@@ -157,10 +157,10 @@ fun AdminMiniBookUploadCard() {
             .border(1.dp, Color(0xFFE3DFD3), RoundedCornerShape(16.dp))
             .padding(18.dp)
     ) {
-        Text("Upload Mini Book", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
+        Text("Special Note Books", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
         Spacer(Modifier.height(4.dp))
         Text(
-            "Text wale books mein pehle 5 sections free milte hain. PDF wale books mein poori PDF unlock hone se pehle sirf cover + title dikhta hai. Price ₹0 rakhoge to poori book free hogi.",
+            "Text-based books show the first 5 sections free. PDF books show only the cover + title until unlocked. Set price to ₹0 for a fully free book.",
             fontSize = 11.sp,
             color = Color(0xFF5B5F6B)
         )
@@ -269,7 +269,7 @@ fun AdminMiniBookUploadCard() {
         if (loadingBooks) {
             CircularProgressIndicator(color = Color(0xFF12203D))
         } else if (books.isEmpty()) {
-            Text("Koi book upload nahi hui abhi.", fontSize = 12.sp, color = Color(0xFF5B5F6B))
+            Text("No books uploaded yet.", fontSize = 12.sp, color = Color(0xFF5B5F6B))
         } else {
             Column(modifier = Modifier.heightIn(max = 360.dp)) {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -334,7 +334,7 @@ private fun EditMiniBookDialog(book: AdminMiniBookEntry, onDismiss: () -> Unit, 
             )
             Spacer(Modifier.height(12.dp))
 
-            Text("Total Downloads (manually set kar sakte ho)", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF5B5F6B))
+            Text("Total Downloads (you can set this manually)", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF5B5F6B))
             Spacer(Modifier.height(4.dp))
             OutlinedTextField(
                 value = downloads,
