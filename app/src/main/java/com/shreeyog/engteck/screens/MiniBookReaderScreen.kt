@@ -12,8 +12,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -505,8 +509,9 @@ private fun MiniBookPdfPreview(pdfBase64: String?, unlocked: Boolean, freePageCo
     }
 }
 
-// A single PDF page image with pinch-to-zoom + pan, reset on double-tap. Each page keeps its
-// own zoom state so scrolling to the next page starts fresh at normal size.
+// A single PDF page image with pinch-to-zoom + pan, reset on double-tap. Only intercepts touch
+// when there are 2+ fingers (an actual pinch) or the page is already zoomed in — a normal
+// single-finger drag at 1x scale is left alone so the page scrolls normally.
 @Composable
 private fun ZoomablePdfPage(bmp: android.graphics.Bitmap) {
     var scale by remember { mutableStateOf(1f) }
@@ -533,11 +538,26 @@ private fun ZoomablePdfPage(bmp: android.graphics.Bitmap) {
                     translationY = offsetY
                 )
                 .pointerInput(Unit) {
-                    detectTransformGestures(panZoomLock = false) { _, pan, zoom, _ ->
-                        val newScale = (scale * zoom).coerceIn(1f, 5f)
-                        scale = newScale
-                        offsetX = if (newScale > 1f) offsetX + pan.x else 0f
-                        offsetY = if (newScale > 1f) offsetY + pan.y else 0f
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        do {
+                            val event = awaitPointerEvent()
+                            val isPinch = event.changes.size > 1
+                            if (isPinch || scale > 1f) {
+                                val zoomChange = event.calculateZoom()
+                                val panChange = event.calculatePan()
+                                val newScale = (scale * zoomChange).coerceIn(1f, 5f)
+                                scale = newScale
+                                if (newScale > 1f) {
+                                    offsetX += panChange.x
+                                    offsetY += panChange.y
+                                } else {
+                                    offsetX = 0f
+                                    offsetY = 0f
+                                }
+                                event.changes.forEach { c -> if (c.positionChanged()) c.consume() }
+                            }
+                        } while (event.changes.any { it.pressed })
                     }
                 }
                 .pointerInput(Unit) {
