@@ -77,7 +77,7 @@ fun MiniBooksScreen(onBookClick: (key: String, title: String) -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-        Text("Mini Books", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = NavyDeep, modifier = Modifier.padding(horizontal = 20.dp))
+        Text("Special Note Books", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = NavyDeep, modifier = Modifier.padding(horizontal = 20.dp))
         Spacer(Modifier.height(12.dp))
 
         if (loading) {
