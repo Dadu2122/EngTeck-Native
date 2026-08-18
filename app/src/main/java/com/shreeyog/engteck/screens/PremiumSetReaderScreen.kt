@@ -282,7 +282,7 @@ fun PremiumSetReaderScreen(catKey: String, setKey: String, setTitle: String, onB
             }
         } else {
             LazyColumn(
-                modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
+                modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 items(questions) { q ->
