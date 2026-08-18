@@ -1,12 +1,18 @@
 package com.shreeyog.engteck.payment
 
-import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
+// Same Vercel serverless endpoint the web app calls (create-razorpay-order.js) — it creates the
+// Razorpay order server-side and returns the orderId/amount/keyId needed to open Checkout. The
+// matching webhook (razorpay-webhook.js), already deployed on the same project, is what actually
+// writes the payment confirmation to Firebase after Razorpay verifies the payment — so this app
+// never needs to know the Razorpay secret key, exactly like the web app.
 private const val RAZORPAY_ORDER_SERVER = "https://shreeyog-agora-token-server.vercel.app/api/create-razorpay-order"
 
 data class RazorpayOrderResult(val orderId: String, val amount: Long, val keyId: String)
@@ -48,56 +54,22 @@ suspend fun createRazorpayOrder(amount: Int, bookKey: String, mobile: String, ti
     }
 }
 
-fun openRazorpayCheckout(
-    activity: Activity,
+// Builds the Intent to launch the WebView-based checkout screen (RazorpayWebCheckoutActivity).
+// Launch this via rememberLauncherForActivityResult in the Composable and read the "paymentId"
+// extra from the result on success.
+fun buildRazorpayCheckoutIntent(
+    context: Context,
     order: RazorpayOrderResult,
     mobile: String,
     description: String,
     coachingName: String
-) {
-    val checkout = com.razorpay.Checkout()
-    checkout.setKeyID(order.keyId)
-    val options = JSONObject().apply {
-        put("name", coachingName)
-        put("description", description)
-        put("order_id", order.orderId)
-        put("currency", "INR")
-        put("amount", order.amount)
-        put("theme.color", "#12203D")
-        put("prefill.contact", mobile)
-        val upiBlock = JSONObject().apply {
-            put("name", "Pay using UPI")
-            put("instruments", org.json.JSONArray().apply {
-                put(JSONObject().apply { put("method", "upi") })
-            })
-        }
-        val cardBlock = JSONObject().apply {
-            put("name", "Pay using Card")
-            put("instruments", org.json.JSONArray().apply {
-                put(JSONObject().apply { put("method", "card") })
-            })
-        }
-        val blocks = JSONObject().apply {
-            put("upi", upiBlock)
-            put("card", cardBlock)
-        }
-        val display = JSONObject().apply {
-            put("blocks", blocks)
-            put("sequence", org.json.JSONArray().apply {
-                put("block.upi")
-                put("block.card")
-            })
-            put("preferences", JSONObject().apply {
-                put("show_default_blocks", true)
-            })
-        }
-        put("config", JSONObject().apply {
-            put("display", display)
-        })
-    }
-    try {
-        checkout.open(activity, options)
-    } catch (e: Exception) {
-        RazorpayBridge.notifyError(-1, "Could not open payment window: ${e.message}")
+): Intent {
+    return Intent(context, RazorpayWebCheckoutActivity::class.java).apply {
+        putExtra("keyId", order.keyId)
+        putExtra("orderId", order.orderId)
+        putExtra("amount", order.amount)
+        putExtra("name", coachingName)
+        putExtra("description", description)
+        putExtra("contact", mobile)
     }
 }
