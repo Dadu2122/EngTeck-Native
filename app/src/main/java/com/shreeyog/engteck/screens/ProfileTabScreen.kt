@@ -85,30 +85,32 @@ private fun AdminPanelScreen() {
     ) {
         Text("Admin Panel", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
         Spacer(Modifier.height(16.dp))
-        AdminContentEditorCard()
-        Spacer(Modifier.height(16.dp))
-        AdminFreePdfSetsCard()
-        Spacer(Modifier.height(16.dp))
-        AdminPremiumPdfSetsCard()
-        Spacer(Modifier.height(16.dp))
-        AdminWritersCard()
-        Spacer(Modifier.height(16.dp))
-        AdminTopicSectionsCard()
-        Spacer(Modifier.height(16.dp))
-        AdminDailyPracticeCard()
-        Spacer(Modifier.height(16.dp))
-        AdminSelfAssessmentCard()
-        Spacer(Modifier.height(16.dp))
-        AdminVideosRecordingsCard()
-        Spacer(Modifier.height(16.dp))
-        AdminAddRegistrationCard()
-        Spacer(Modifier.height(16.dp))
-        AdminScoresManagerCard()
-        Spacer(Modifier.height(16.dp))
-        AdminMiniBookUploadCard()
-        Spacer(Modifier.height(16.dp))
-        AdminDataViewersCard()
+
+        AdminAccordionSection("Content Editor", "📝") { AdminContentEditorCard() }
+        Spacer(Modifier.height(10.dp))
+        AdminAccordionSection("Free PDF Sets", "📄") { AdminFreePdfSetsCard() }
+        Spacer(Modifier.height(10.dp))
+        AdminAccordionSection("Premium PDF Library", "📚") { AdminPremiumPdfSetsCard() }
+        Spacer(Modifier.height(10.dp))
+        AdminAccordionSection("Writers & Works", "✍️") { AdminWritersCard() }
+        Spacer(Modifier.height(10.dp))
+        AdminAccordionSection("Topic Sections", "📖") { AdminTopicSectionsCard() }
+        Spacer(Modifier.height(10.dp))
+        AdminAccordionSection("Daily Practice", "🔥") { AdminDailyPracticeCard() }
+        Spacer(Modifier.height(10.dp))
+        AdminAccordionSection("Self Assessment", "🎯") { AdminSelfAssessmentCard() }
+        Spacer(Modifier.height(10.dp))
+        AdminAccordionSection("Videos & Recordings", "🎬") { AdminVideosRecordingsCard() }
+        Spacer(Modifier.height(10.dp))
+        AdminAccordionSection("Add Registration", "➕") { AdminAddRegistrationCard() }
+        Spacer(Modifier.height(10.dp))
+        AdminAccordionSection("Scores Manager", "🏆") { AdminScoresManagerCard() }
+        Spacer(Modifier.height(10.dp))
+        AdminAccordionSection("Mini Book Upload", "📕") { AdminMiniBookUploadCard() }
+        Spacer(Modifier.height(10.dp))
+        AdminAccordionSection("Data Viewer", "📊") { AdminDataViewersCard() }
         Spacer(Modifier.height(30.dp))
     }
 }
+
 
