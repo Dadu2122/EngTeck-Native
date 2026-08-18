@@ -32,6 +32,13 @@ class RazorpayWebCheckoutActivity : Activity() {
         val webView = WebView(this)
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
+        // Android WebViews add a "; wv" token to the User-Agent by default, which lets sites
+        // detect "this is an embedded WebView, not a real browser". Razorpay's checkout uses
+        // exactly this to decide whether to show UPI intent apps — it hides that section for
+        // WebView user agents as a safety default. Overriding it to a normal Chrome mobile UA
+        // (no "wv" token) makes Razorpay treat this exactly like its own web checkout.
+        webView.settings.userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url.toString()
