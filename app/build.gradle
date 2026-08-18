@@ -60,4 +60,5 @@ dependencies {
     implementation 'com.google.firebase:firebase-analytics-ktx'
 
     implementation 'io.coil-kt:coil-compose:2.6.0'
+    implementation 'com.razorpay:checkout:1.6.+'
 }
