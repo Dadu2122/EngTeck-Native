@@ -2,9 +2,12 @@ package com.shreeyog.engteck.payment
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 
@@ -29,7 +32,25 @@ class RazorpayWebCheckoutActivity : Activity() {
         val webView = WebView(this)
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
-        webView.webViewClient = WebViewClient()
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val url = request.url.toString()
+                // Any non-http(s) link here is a UPI app trying to open (upi://, tez://,
+                // phonepe://, paytmmp://, credpay://, etc.) — a plain WebView has no idea what
+                // to do with these, so without this override Razorpay just hides the whole UPI
+                // section since it knows tapping it would silently fail.
+                if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                    return try {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        startActivity(intent)
+                        true
+                    } catch (e: ActivityNotFoundException) {
+                        true
+                    }
+                }
+                return false
+            }
+        }
         webView.addJavascriptInterface(JsBridge(), "AndroidPay")
         setContentView(webView)
 
@@ -97,4 +118,3 @@ class RazorpayWebCheckoutActivity : Activity() {
         }
     }
 }
-
