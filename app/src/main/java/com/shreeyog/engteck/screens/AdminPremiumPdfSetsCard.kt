@@ -43,6 +43,7 @@ fun AdminPremiumPdfSetsCard() {
     var editorCat by remember { mutableStateOf("tgt") }
     var editorSetKey by remember { mutableStateOf<String?>(null) }
     var refreshTick by remember { mutableStateOf(0) }
+    var markPaidOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(activeCat, refreshTick) {
         loading = true
@@ -76,15 +77,6 @@ fun AdminPremiumPdfSetsCard() {
         )
         Spacer(Modifier.height(12.dp))
 
-        Column(modifier = Modifier.heightIn(max = 90.dp)) {
-            LazyColumn(horizontalAlignment = Alignment.Start) {
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        PPDF_CATS.chunked(4).forEach { }
-                    }
-                }
-            }
-        }
         // Category chips wrap across two rows since there are 7 categories
         PPDF_CATS.chunked(4).forEach { rowCats ->
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
@@ -152,6 +144,15 @@ fun AdminPremiumPdfSetsCard() {
             ) {
                 Text("+ Add New Premium Set", fontWeight = FontWeight.Bold)
             }
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = { markPaidOpen = true },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B6B79), contentColor = Color.White),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().height(44.dp)
+            ) {
+                Text("🔓 Mark PDF Access as Paid", fontWeight = FontWeight.Bold)
+            }
         }
     }
 
@@ -165,6 +166,77 @@ fun AdminPremiumPdfSetsCard() {
                 refreshTick++
             }
         )
+    }
+    if (markPaidOpen) {
+        MarkPaidDialog(
+            catKey = activeCat,
+            catLabel = PPDF_CATS.find { it.first == activeCat }?.second ?: activeCat,
+            firebasePath = "paidPdfCategories",
+            actionLabel = "read/download all",
+            contentLabel = "premium PDF sets",
+            onDismiss = { markPaidOpen = false }
+        )
+    }
+}
+
+@Composable
+private fun MarkPaidDialog(
+    catKey: String,
+    catLabel: String,
+    firebasePath: String,
+    actionLabel: String,
+    contentLabel: String,
+    onDismiss: () -> Unit
+) {
+    var mobile by remember { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("") }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White, RoundedCornerShape(18.dp))
+                .padding(18.dp)
+        ) {
+            Text("Mark $catLabel Access as Paid", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
+            Spacer(Modifier.height(12.dp))
+            Text("Student Mobile Number", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF5B5F6B))
+            Spacer(Modifier.height(4.dp))
+            OutlinedTextField(
+                value = mobile,
+                onValueChange = { mobile = it.filter { c -> c.isDigit() }.take(10) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                singleLine = true,
+                placeholder = { Text("10-digit mobile number") }
+            )
+            if (status.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(status, fontSize = 11.5.sp, color = if (status.startsWith("Marked")) Color(0xFF1F7A3D) else Color(0xFFC0392B))
+            }
+            Spacer(Modifier.height(14.dp))
+            Button(
+                onClick = {
+                    if (mobile.length != 10) { status = "Please enter a valid 10-digit mobile number."; return@Button }
+                    saving = true
+                    FirebaseDatabase.getInstance().getReference(firebasePath).child(mobile).child(catKey).setValue(true)
+                        .addOnSuccessListener {
+                            saving = false
+                            status = "Marked as paid ✓ — $mobile can now $actionLabel $catLabel $contentLabel."
+                        }
+                        .addOnFailureListener { saving = false; status = "Failed to save." }
+                },
+                enabled = !saving,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4A017), contentColor = Color(0xFF12203D)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().height(44.dp)
+            ) {
+                Text(if (saving) "Saving..." else "Mark as Paid", fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(6.dp))
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Close") }
+        }
     }
 }
 
@@ -298,4 +370,3 @@ private fun PremiumSetEditorDialog(catKey: String, setKey: String?, onDismiss: (
         }
     }
 }
-
