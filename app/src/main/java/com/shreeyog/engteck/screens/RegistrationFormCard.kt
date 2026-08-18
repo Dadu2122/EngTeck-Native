@@ -3,6 +3,7 @@ package com.shreeyog.engteck.screens
 import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -182,7 +183,7 @@ fun RegistrationFormCard() {
                                 .weight(1f)
                                 .background(if (active) Color(0xFFD4A017) else Color(0xFFF5F3EC), RoundedCornerShape(12.dp))
                                 .border(1.5.dp, if (active) Color(0xFFD4A017) else Color(0xFFE3DFD3), RoundedCornerShape(12.dp))
-                                .clickableSimple {
+                                .clickable {
                                     planType = key
                                     duration = null
                                     resetPaymentState()
@@ -272,7 +273,7 @@ fun RegistrationFormCard() {
                                                     while (attemptsLeft > 0 && !confirmed) {
                                                         val snap = FirebaseDatabase.getInstance()
                                                             .getReference("paidMiniBooks").child(mobile).child(regKey)
-                                                            .get().await0()
+                                                            .getValueOnceOrNull()
                                                         if (snap == true) {
                                                             confirmed = true
                                                             paid = true
@@ -406,9 +407,11 @@ private fun RegField(
     }
 }
 
-// Small local helper so we don't need an extra import line duplicated everywhere above.
-private fun Modifier.clickableSimple(onClick: () -> Unit): Modifier =
-    this.then(androidx.compose.ui.Modifier.clickable(onClick = onClick))
-
-private val androidx.compose.ui.Modifier.Companion.clickableHelperMarker: Unit
-    get() = Unit
+// Reads a Firebase value once as a suspend call (no kotlinx-coroutines-play-services dependency
+// needed — just wraps the standard listener callbacks).
+private suspend fun com.google.firebase.database.DatabaseReference.getValueOnceOrNull(): Any? =
+    kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+        this.get()
+            .addOnSuccessListener { snapshot -> if (cont.isActive) cont.resume(snapshot.value, null) }
+            .addOnFailureListener { if (cont.isActive) cont.resume(null, null) }
+    }
