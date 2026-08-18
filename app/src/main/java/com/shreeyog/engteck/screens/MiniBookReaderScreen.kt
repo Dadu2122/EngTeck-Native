@@ -12,6 +12,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,8 +22,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -486,15 +491,8 @@ private fun MiniBookPdfPreview(pdfBase64: String?, unlocked: Boolean, freePageCo
         else -> {
             Column {
                 pageBitmaps.forEach { bmp ->
-                    androidx.compose.foundation.Image(
-                        bitmap = bmp.asImageBitmap(),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 10.dp)
-                            .background(Color.White, RoundedCornerShape(10.dp))
-                            .border(1.dp, Color(0xFFE3DFD3), RoundedCornerShape(10.dp))
-                    )
+                    ZoomablePdfPage(bmp)
+                    Spacer(Modifier.height(10.dp))
                 }
                 if (!unlocked && totalPages > freePageCount) {
                     Text(
@@ -504,6 +502,52 @@ private fun MiniBookPdfPreview(pdfBase64: String?, unlocked: Boolean, freePageCo
                 }
             }
         }
+    }
+}
+
+// A single PDF page image with pinch-to-zoom + pan, reset on double-tap. Each page keeps its
+// own zoom state so scrolling to the next page starts fresh at normal size.
+@Composable
+private fun ZoomablePdfPage(bmp: android.graphics.Bitmap) {
+    var scale by remember { mutableStateOf(1f) }
+    var offsetX by remember { mutableStateOf(0f) }
+    var offsetY by remember { mutableStateOf(0f) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White, RoundedCornerShape(10.dp))
+            .border(1.dp, Color(0xFFE3DFD3), RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(10.dp))
+    ) {
+        androidx.compose.foundation.Image(
+            bitmap = bmp.asImageBitmap(),
+            contentDescription = null,
+            contentScale = ContentScale.FillWidth,
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer(
+                    scaleX = scale,
+                    scaleY = scale,
+                    translationX = offsetX,
+                    translationY = offsetY
+                )
+                .pointerInput(Unit) {
+                    detectTransformGestures(panZoomLock = false) { _, pan, zoom, _ ->
+                        val newScale = (scale * zoom).coerceIn(1f, 5f)
+                        scale = newScale
+                        offsetX = if (newScale > 1f) offsetX + pan.x else 0f
+                        offsetY = if (newScale > 1f) offsetY + pan.y else 0f
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures(onDoubleTap = {
+                        scale = 1f
+                        offsetX = 0f
+                        offsetY = 0f
+                    })
+                }
+        )
     }
 }
 
