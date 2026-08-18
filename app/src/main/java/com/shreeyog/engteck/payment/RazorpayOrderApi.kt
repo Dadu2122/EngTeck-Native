@@ -73,15 +73,6 @@ fun openRazorpayCheckout(
         put("amount", order.amount)
         put("theme.color", "#12203D")
         put("prefill.contact", mobile)
-        // Without this, the native Checkout SDK sometimes only shows Cards/Netbanking/Wallet
-        // and hides UPI — explicitly enabling every method here matches what the web checkout.js
-        // shows by default.
-        put("method", JSONObject().apply {
-            put("upi", true)
-            put("card", true)
-            put("netbanking", true)
-            put("wallet", true)
-        })
     }
     try {
         checkout.open(activity, options)
