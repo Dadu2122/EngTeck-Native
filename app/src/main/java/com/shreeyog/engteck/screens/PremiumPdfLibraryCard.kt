@@ -256,27 +256,43 @@ private fun CheckRegistrationAccessDialog(
                     }
                     checking = true
                     errorMsg = ""
-                    val todayISO = SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).format(Date())
-                    FirebaseDatabase.getInstance().getReference("registrations")
-                        .orderByChild("mobile").equalTo(mobile)
+                    val db = FirebaseDatabase.getInstance()
+                    // Check 1: admin manually marked this mobile+category as paid.
+                    db.getReference("paidPdfCategories").child(mobile).child(catKey)
                         .get()
-                        .addOnSuccessListener { snapshot ->
-                            checking = false
-                            var hasActivePlan = false
-                            for (child in snapshot.children) {
-                                val planCategory = child.child("planCategory").getValue(String::class.java)
-                                val planExpiryISO = child.child("planExpiryISO").getValue(String::class.java)
-                                if (planCategory == catKey && planExpiryISO != null && planExpiryISO >= todayISO) {
-                                    hasActivePlan = true
-                                }
-                            }
-                            if (hasActivePlan) {
+                        .addOnSuccessListener { markedSnap ->
+                            if (markedSnap.getValue(Boolean::class.java) == true) {
+                                checking = false
                                 onUnlocked(mobile)
-                            } else if (!snapshot.exists()) {
-                                errorMsg = "Ye mobile number registered nahi hai. Pehle Registration form bharo."
-                            } else {
-                                errorMsg = "Is number ka $catLabel plan active nahi hai (expire ho chuka hai ya category match nahi). Registration form se pay/renew karo."
+                                return@addOnSuccessListener
                             }
+                            // Check 2: an active (non-expired) registration for this category.
+                            val todayISO = SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).format(Date())
+                            db.getReference("registrations")
+                                .orderByChild("mobile").equalTo(mobile)
+                                .get()
+                                .addOnSuccessListener { snapshot ->
+                                    checking = false
+                                    var hasActivePlan = false
+                                    for (child in snapshot.children) {
+                                        val planCategory = child.child("planCategory").getValue(String::class.java)
+                                        val planExpiryISO = child.child("planExpiryISO").getValue(String::class.java)
+                                        if (planCategory == catKey && planExpiryISO != null && planExpiryISO >= todayISO) {
+                                            hasActivePlan = true
+                                        }
+                                    }
+                                    if (hasActivePlan) {
+                                        onUnlocked(mobile)
+                                    } else if (!snapshot.exists()) {
+                                        errorMsg = "Ye mobile number registered nahi hai. Pehle Registration form bharo, ya admin se Mark as Paid karwao."
+                                    } else {
+                                        errorMsg = "Is number ka $catLabel plan active nahi hai (expire ho chuka hai ya category match nahi)."
+                                    }
+                                }
+                                .addOnFailureListener {
+                                    checking = false
+                                    errorMsg = "Check karne mein dikkat aayi (Firebase index missing ho sakta hai). Dobara try karo."
+                                }
                         }
                         .addOnFailureListener {
                             checking = false
@@ -295,4 +311,3 @@ private fun CheckRegistrationAccessDialog(
         }
     }
 }
-
