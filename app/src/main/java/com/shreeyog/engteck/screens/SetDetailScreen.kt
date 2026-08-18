@@ -287,15 +287,20 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
             }
         } else {
             LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(0.dp)
+                modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 items(questions) { q ->
-                    Column(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White, RoundedCornerShape(16.dp))
+                            .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(16.dp))
+                    ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 12.dp),
+                                .padding(horizontal = 18.dp, vertical = 14.dp),
                             verticalAlignment = Alignment.Top
                         ) {
                             Box(
@@ -334,11 +339,9 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                 isCorrectOption -> Color(0xFF1F7A3D)
                                 else -> Color(0xFF5B5F6B)
                             }
-                            val boxBg = when {
-                                showAnswers -> Color.White
-                                bgColor == Color.Transparent -> Color(0xFFFAF8F3)
-                                else -> bgColor
-                            }
+                            // Always solid white when idle — no cream tint — so the card reads
+                            // as one clean solid block instead of a shaded list.
+                            val boxBg = if (bgColor == Color.Transparent) Color.White else bgColor
 
                             Box(
                                 modifier = Modifier
@@ -347,7 +350,7 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                     .clickable(enabled = !showAnswers && userSelected == null) {
                                         selectedAnswers = selectedAnswers + (q.number to optLetter)
                                     }
-                                    .padding(vertical = 12.dp, horizontal = 20.dp)
+                                    .padding(vertical = 12.dp, horizontal = 18.dp)
                             ) {
                                 Text(
                                     opt,
@@ -356,7 +359,7 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                     fontWeight = if (bgColor != Color.Transparent) FontWeight.Bold else FontWeight.Normal
                                 )
                             }
-                            HorizontalDivider(color = Color(0xFFE3DFD3), thickness = 0.5.dp)
+                            HorizontalDivider(color = Color(0xFFF0EEE7), thickness = 0.5.dp)
                         }
 
                         if (showAnswers && q.correctAnswer.isNotEmpty()) {
@@ -365,10 +368,11 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                 fontSize = 13.sp,
                                 color = Color(0xFF1F7A3D),
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp)
+                                modifier = Modifier.padding(horizontal = 18.dp, top = 8.dp, bottom = 12.dp)
                             )
+                        } else {
+                            Spacer(Modifier.height(8.dp))
                         }
-                        HorizontalDivider(color = Color(0xFFE3DFD3), thickness = 3.dp)
                     }
                 }
                 item { Spacer(Modifier.height(80.dp)) }
