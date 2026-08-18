@@ -109,7 +109,6 @@ private fun psmSaveTextPdf(context: android.content.Context, title: String, body
 @Composable
 private fun PsmDownloadPdfButton(title: String, body: String) {
     val context = LocalContext.current
-    if (body.isBlank()) return
     Spacer(Modifier.height(14.dp))
     Button(
         onClick = {
@@ -126,6 +125,125 @@ private fun PsmDownloadPdfButton(title: String, body: String) {
     ) {
         Text("⬇ Download PDF", color = Color.White, fontWeight = FontWeight.Bold)
     }
+}
+
+// ---------- Annotation toolbar: tap a color/highlight, then tap any line to color it — matches
+// the web app's "select text, apply color/highlight" feature. Saved locally per content instance
+// so each student's markings are their own (not synced to Firebase or visible to anyone else). ----------
+private val PSM_ANNOTATE_COLORS = listOf(
+    "red" to Color(0xFFE85D4C),
+    "navy" to PSM_NAVY,
+    "green" to Color(0xFF1F9D55)
+)
+private val PSM_HIGHLIGHT_COLOR = Color(0xFFFFF3A3)
+
+@Composable
+private fun PsmAnnotatableContent(context: android.content.Context, contentKey: String, title: String, body: String) {
+    val prefs = remember { context.getSharedPreferences("engteck_prefs", android.content.Context.MODE_PRIVATE) }
+    val annotKey = "psm_annot_$contentKey"
+    val lines = remember(body) { body.split("\n") }
+
+    // annotations: line index -> "red" | "navy" | "green" | "highlight"
+    var annotations by remember(contentKey) {
+        mutableStateOf(
+            (prefs.getString(annotKey, "") ?: "")
+                .split(",").filter { it.contains(":") }
+                .associate { val (i, c) = it.split(":"); i.toInt() to c }
+                .toMutableMap()
+        )
+    }
+    var activeTool by remember { mutableStateOf<String?>(null) } // "red" | "navy" | "green" | "highlight" | null
+
+    fun persist() {
+        prefs.edit().putString(annotKey, annotations.entries.joinToString(",") { "${it.key}:${it.value}" }).apply()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White, RoundedCornerShape(16.dp))
+            .border(1.5.dp, PSM_GOLD, RoundedCornerShape(16.dp))
+            .padding(18.dp)
+    ) {
+        if (body.isBlank()) {
+            Text("Coming soon.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
+        } else {
+            lines.forEachIndexed { index, line ->
+                if (line.isBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                } else {
+                    val annotColor = annotations[index]
+                    val bg = when (annotColor) {
+                        "red" -> Color(0xFFE85D4C).copy(alpha = 0.15f)
+                        "navy" -> PSM_NAVY.copy(alpha = 0.12f)
+                        "green" -> Color(0xFF1F9D55).copy(alpha = 0.15f)
+                        "highlight" -> PSM_HIGHLIGHT_COLOR
+                        else -> Color.Transparent
+                    }
+                    Text(
+                        line,
+                        fontSize = 14.sp,
+                        color = Color(0xFF1A1A1A),
+                        lineHeight = 22.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(bg, RoundedCornerShape(4.dp))
+                            .clickable(enabled = activeTool != null) {
+                                if (activeTool != null) {
+                                    if (annotations[index] == activeTool) annotations.remove(index) else annotations[index] = activeTool!!
+                                    annotations = annotations.toMutableMap()
+                                    persist()
+                                }
+                            }
+                            .padding(vertical = 2.dp)
+                    )
+                }
+            }
+        }
+    }
+
+    Spacer(Modifier.height(10.dp))
+    Text(
+        if (activeTool == null) "Rang ya highlight select karo, phir jis line pe lagana hai use tap karo."
+        else "Ab jis line pe rang lagana hai use tap karo — dobara tap karke hataya bhi ja sakta hai.",
+        fontSize = 10.5.sp, color = Color(0xFF9B968A)
+    )
+    Spacer(Modifier.height(10.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        PSM_ANNOTATE_COLORS.forEach { (key, color) ->
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(color, CircleShape)
+                    .border(if (activeTool == key) 3.dp else 0.dp, Color(0xFF1A1A1A), CircleShape)
+                    .clickable { activeTool = if (activeTool == key) null else key }
+            )
+        }
+        Box(
+            modifier = Modifier
+                .background(if (activeTool == "highlight") PSM_HIGHLIGHT_COLOR else Color(0xFFFCF3D9), RoundedCornerShape(100.dp))
+                .border(if (activeTool == "highlight") 2.dp else 0.dp, Color(0xFF1A1A1A), RoundedCornerShape(100.dp))
+                .clickable { activeTool = if (activeTool == "highlight") null else "highlight" }
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+        ) {
+            Text("🖍️ Highlight", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF946B00))
+        }
+    }
+    Spacer(Modifier.height(10.dp))
+    Box(
+        modifier = Modifier
+            .background(Color.White, RoundedCornerShape(100.dp))
+            .border(1.5.dp, Color(0xFFE85D4C), RoundedCornerShape(100.dp))
+            .clickable {
+                annotations = mutableMapOf()
+                persist()
+                activeTool = null
+            }
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
+        Text("🧹 Erase All", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE85D4C))
+    }
+    PsmDownloadPdfButton(title, body)
 }
 
 private val PSM_NAVY = Color(0xFF12203D)
@@ -252,7 +370,7 @@ fun PremiumStudyMaterialScreen(catKey: String, catLabel: String, mobile: String,
             is PsmView.TopicPointsList -> PsmTopicPointsListView(catKey, v.sectionKey, v.label) { pointKey, title, content ->
                 view = PsmView.TopicPointDetail(v.sectionKey, pointKey, title, content)
             }
-            is PsmView.TopicPointDetail -> PsmTopicPointDetailView(v.title, v.content)
+            is PsmView.TopicPointDetail -> PsmTopicPointDetailView(catKey, v.sectionKey, v.pointKey, v.title, v.content)
             is PsmView.DailyPracticeQuiz -> PsmMcqPracticeView(catKey, "dailyPractice", v.partKey, v.label)
             is PsmView.SelfAssessment -> PsmSelfAssessmentView(catKey, mobile)
         }
@@ -541,19 +659,15 @@ private fun PsmTextFieldView(catKey: String, writerKey: String, field: String, t
             .get().addOnSuccessListener { text = it.getValue(String::class.java) ?: ""; loading = false }
             .addOnFailureListener { loading = false }
     }
-    Column(Modifier.fillMaxSize().padding(20.dp)) {
+    Column(Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
         Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
         Spacer(Modifier.height(14.dp))
         if (loading) {
             CircularProgressIndicator(color = PSM_NAVY)
-        } else if (text.isBlank()) {
-            Text("Coming soon.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
         } else {
-            LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
-                item { Text(text, fontSize = 14.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp) }
-            }
-            PsmDownloadPdfButton(title, text)
+            PsmAnnotatableContent(context = androidx.compose.ui.platform.LocalContext.current, contentKey = "${catKey}_${writerKey}_$field", title = title, body = text)
         }
+        Spacer(Modifier.height(30.dp))
     }
 }
 
@@ -710,15 +824,14 @@ private fun PsmWorkDetailView(catKey: String, writerKey: String, workKey: String
                 "themes" -> themes
                 else -> ""
             }
-            LazyColumn(modifier = Modifier.weight(1f).padding(horizontal = 20.dp)) {
-                item {
-                    if (text.isBlank()) Text("Coming soon.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
-                    else {
-                        Text(text, fontSize = 14.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp)
-                        PsmDownloadPdfButton("$title — ${activeTab.replaceFirstChar { it.uppercase() }}", text)
-                    }
-                    Spacer(Modifier.height(30.dp))
-                }
+            Column(modifier = Modifier.weight(1f).padding(horizontal = 20.dp).verticalScroll(rememberScrollState())) {
+                PsmAnnotatableContent(
+                    context = context,
+                    contentKey = "${catKey}_${writerKey}_${workKey}_$activeTab",
+                    title = "$title — ${activeTab.replaceFirstChar { it.uppercase() }}",
+                    body = text
+                )
+                Spacer(Modifier.height(30.dp))
             }
         }
     }
@@ -793,18 +906,12 @@ private fun PsmPointRow(p: PsmTopicPointEntry, onClick: () -> Unit) {
 }
 
 @Composable
-private fun PsmTopicPointDetailView(title: String, content: String) {
-    Column(Modifier.fillMaxSize().padding(20.dp)) {
+private fun PsmTopicPointDetailView(catKey: String, sectionKey: String, pointKey: String, title: String, content: String) {
+    Column(Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
         Text(title, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A))
         Spacer(Modifier.height(14.dp))
-        if (content.isBlank()) {
-            Text("Coming soon.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
-        } else {
-            LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
-                item { Text(content, fontSize = 14.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp) }
-            }
-            PsmDownloadPdfButton(title, content)
-        }
+        PsmAnnotatableContent(context = androidx.compose.ui.platform.LocalContext.current, contentKey = "${catKey}_${sectionKey}_$pointKey", title = title, body = content)
+        Spacer(Modifier.height(30.dp))
     }
 }
 
