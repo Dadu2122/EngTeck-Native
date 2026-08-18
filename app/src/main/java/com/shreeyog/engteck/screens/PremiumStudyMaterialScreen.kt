@@ -5,14 +5,19 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -26,44 +31,66 @@ private val PSM_NAVY = Color(0xFF12203D)
 private val PSM_GOLD = Color(0xFFD4A017)
 private val PSM_CORAL = Color(0xFFE85D4C)
 private val PSM_TEAL = Color(0xFF1B6B79)
+private val PSM_MAROON = Color(0xFF7A2E2E)
 private val PSM_GREEN = Color(0xFF1F7A3D)
 private val PSM_RED = Color(0xFFC0392B)
 
-// ---------- Shared parsing (same "1. Q / A) opt / Correct Answer: X" format used everywhere) ----------
+// ---------- Shared parsing — matches the web app's parseQuestions + pcSplitCorrectAnswer exactly:
+// questions split on the next "N. " line (not blank lines), every subsequent line is an option
+// unless it's a Correct Answer/Explanation line. ----------
 private data class PsmQuestion(val number: String, val question: String, val options: List<String>, val correctAnswer: String)
 private fun psmParseQuestions(raw: String): List<PsmQuestion> {
-    return raw.trim().split(Regex("\n\\s*\n")).mapNotNull { block ->
-        val lines = block.trim().lines().map { it.trim() }.filter { it.isNotEmpty() }
-        if (lines.isEmpty()) return@mapNotNull null
-        val firstLine = lines[0]
-        val numMatch = Regex("^(\\d+)\\.\\s*(.*)").find(firstLine) ?: return@mapNotNull null
-        val number = numMatch.groupValues[1]
-        val question = numMatch.groupValues[2]
-        val options = mutableListOf<String>()
+    if (raw.isBlank()) return emptyList()
+    val parts = raw.split(Regex("\n(?=\\s*\\d+[.)]\\s)"))
+    return parts.map { it.trim() }.filter { it.isNotEmpty() }.mapIndexed { i, block ->
+        val lines = block.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+        val question = (lines.getOrNull(0) ?: "").replace(Regex("^\\d+[.)]\\s*"), "")
         var correctAnswer = ""
-        for (i in 1 until lines.size) {
-            val line = lines[i]
-            if (line.startsWith("Correct Answer:")) correctAnswer = line.removePrefix("Correct Answer:").trim()
-            else if (Regex("^[A-D]\\)").containsMatchIn(line)) options.add(line)
+        val cleanOptions = mutableListOf<String>()
+        lines.drop(1).forEach { line ->
+            val m = Regex("^Correct Answer:\\s*([A-D])", RegexOption.IGNORE_CASE).find(line)
+            if (m != null) {
+                correctAnswer = m.groupValues[1].uppercase()
+            } else if (!line.startsWith("Explanation:", ignoreCase = true)) {
+                cleanOptions.add(line)
+            }
         }
-        PsmQuestion(number, question, options, correctAnswer)
+        PsmQuestion((i + 1).toString(), question, cleanOptions, correctAnswer)
     }
 }
+private fun psmOptionLetter(opt: String, idx: Int): String {
+    val m = Regex("^\\(?([A-Da-d])[.)]").find(opt)
+    return if (m != null) m.groupValues[1].uppercase() else ('A' + idx).toString()
+}
+private fun psmOptionText(opt: String): String = opt.replace(Regex("^\\(?[A-Da-d][.)]\\s*"), "")
 
-// ---------- Navigation state for the whole Premium Study Material area ----------
+private data class PsmSectionDef(val key: String, val label: String)
+private val PSM_HISTORY_KEY = "historyOfEnglishLiterature"
+private val PSM_SECTION_DEFS = listOf(
+    PsmSectionDef(PSM_HISTORY_KEY, "History of English Literature"),
+    PsmSectionDef("formsOfLiterature", "Forms of Literature"),
+    PsmSectionDef("literaryDevices", "Literary Term / Device"),
+    PsmSectionDef("figuresOfSpeech", "Figure of Speech"),
+    PsmSectionDef("literaryTheories", "Literary Theories"),
+    PsmSectionDef("literaryMovements", "Literary Movements"),
+    PsmSectionDef("grammar", "Grammar Section")
+)
+private val PSM_NOTES_SECTIONS = PSM_SECTION_DEFS.filter { it.key != PSM_HISTORY_KEY }
+private val PSM_GROUPS = mapOf("formsOfLiterature" to listOf("Poetry", "Prose", "Drama", "Cross-Genre / Mixed Forms"))
+
+private data class PsmWriterEntry(val key: String, val name: String)
+private data class PsmWorkEntry(val key: String, val title: String, val type: String)
+private data class PsmTopicPointEntry(val key: String, val title: String, val content: String, val group: String?)
+
 private sealed class PsmView {
     object Home : PsmView()
-    object Syllabus : PsmView()
-    object WritersList : PsmView()
     data class WriterDetail(val key: String, val name: String) : PsmView()
     data class Bio(val key: String, val name: String) : PsmView()
     data class Critical(val key: String, val name: String) : PsmView()
     data class WorksList(val writerKey: String, val writerName: String) : PsmView()
     data class WorkDetail(val writerKey: String, val workKey: String, val title: String) : PsmView()
-    object TopicSectionsList : PsmView()
     data class TopicPointsList(val sectionKey: String, val label: String) : PsmView()
     data class TopicPointDetail(val sectionKey: String, val pointKey: String, val title: String, val content: String) : PsmView()
-    object DailyPracticeHome : PsmView()
     data class DailyPracticeQuiz(val partKey: String, val label: String) : PsmView()
     object SelfAssessment : PsmView()
 }
@@ -80,31 +107,30 @@ fun PremiumStudyMaterialScreen(catKey: String, catLabel: String, mobile: String,
             TextButton(onClick = {
                 when (val v = view) {
                     is PsmView.Home -> onExit()
-                    is PsmView.WriterDetail -> view = PsmView.WritersList
-                    is PsmView.TopicPointsList -> view = PsmView.TopicSectionsList
+                    is PsmView.WriterDetail -> view = PsmView.Home
                     is PsmView.Bio -> view = PsmView.WriterDetail(v.key, v.name)
                     is PsmView.Critical -> view = PsmView.WriterDetail(v.key, v.name)
                     is PsmView.WorksList -> view = PsmView.WriterDetail(v.writerKey, v.writerName)
                     is PsmView.WorkDetail -> view = PsmView.WorksList(v.writerKey, "")
-                    is PsmView.TopicPointDetail -> view = PsmView.TopicPointsList(v.sectionKey, "")
-                    is PsmView.DailyPracticeQuiz -> view = PsmView.DailyPracticeHome
-                    else -> view = PsmView.Home
+                    is PsmView.TopicPointsList -> view = PsmView.Home
+                    is PsmView.TopicPointDetail -> view = PsmView.Home
+                    is PsmView.DailyPracticeQuiz -> view = PsmView.Home
+                    is PsmView.SelfAssessment -> view = PsmView.Home
                 }
             }) { Text("‹ Back", color = Color.White) }
             Spacer(Modifier.width(4.dp))
-            Text("$catLabel — Premium", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text("$catLabel — Premium Study Material", color = PSM_GOLD, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         }
 
         when (val v = view) {
             is PsmView.Home -> PsmHomeView(
-                onSyllabus = { view = PsmView.Syllabus },
-                onWriters = { view = PsmView.WritersList },
-                onTopics = { view = PsmView.TopicSectionsList },
-                onDailyPractice = { view = PsmView.DailyPracticeHome },
-                onSelfAssessment = { view = PsmView.SelfAssessment }
+                catKey = catKey,
+                onOpenWriter = { key, name -> view = PsmView.WriterDetail(key, name) },
+                onOpenHistoryPoint = { pointKey, title, content -> view = PsmView.TopicPointDetail(PSM_HISTORY_KEY, pointKey, title, content) },
+                onOpenSection = { sectionKey, label -> view = PsmView.TopicPointsList(sectionKey, label) },
+                onOpenDailyPractice = { partKey, label -> view = PsmView.DailyPracticeQuiz(partKey, label) },
+                onOpenSelfAssessment = { view = PsmView.SelfAssessment }
             )
-            is PsmView.Syllabus -> PsmSyllabusView(catKey)
-            is PsmView.WritersList -> PsmWritersListView(catKey) { key, name -> view = PsmView.WriterDetail(key, name) }
             is PsmView.WriterDetail -> PsmWriterDetailView(
                 writerName = v.name,
                 onBio = { view = PsmView.Bio(v.key, v.name) },
@@ -115,12 +141,10 @@ fun PremiumStudyMaterialScreen(catKey: String, catLabel: String, mobile: String,
             is PsmView.Critical -> PsmTextFieldView(catKey, v.key, "criticalComments", "${v.name} — Critical Comments")
             is PsmView.WorksList -> PsmWorksListView(catKey, v.writerKey) { workKey, title -> view = PsmView.WorkDetail(v.writerKey, workKey, title) }
             is PsmView.WorkDetail -> PsmWorkDetailView(catKey, v.writerKey, v.workKey, v.title)
-            is PsmView.TopicSectionsList -> PsmTopicSectionsListView { sectionKey, label -> view = PsmView.TopicPointsList(sectionKey, label) }
             is PsmView.TopicPointsList -> PsmTopicPointsListView(catKey, v.sectionKey, v.label) { pointKey, title, content ->
                 view = PsmView.TopicPointDetail(v.sectionKey, pointKey, title, content)
             }
             is PsmView.TopicPointDetail -> PsmTopicPointDetailView(v.title, v.content)
-            is PsmView.DailyPracticeHome -> PsmDailyPracticeHomeView(catKey) { partKey, label -> view = PsmView.DailyPracticeQuiz(partKey, label) }
             is PsmView.DailyPracticeQuiz -> PsmMcqPracticeView(catKey, "dailyPractice", v.partKey, v.label)
             is PsmView.SelfAssessment -> PsmSelfAssessmentView(catKey, mobile)
         }
@@ -129,18 +153,249 @@ fun PremiumStudyMaterialScreen(catKey: String, catLabel: String, mobile: String,
 
 @Composable
 private fun PsmHomeView(
-    onSyllabus: () -> Unit,
-    onWriters: () -> Unit,
-    onTopics: () -> Unit,
-    onDailyPractice: () -> Unit,
-    onSelfAssessment: () -> Unit
+    catKey: String,
+    onOpenWriter: (String, String) -> Unit,
+    onOpenHistoryPoint: (String, String, String) -> Unit,
+    onOpenSection: (String, String) -> Unit,
+    onOpenDailyPractice: (String, String) -> Unit,
+    onOpenSelfAssessment: () -> Unit
 ) {
+    var loading by remember { mutableStateOf(true) }
+    var syllabus by remember { mutableStateOf("") }
+    var writers by remember { mutableStateOf<List<PsmWriterEntry>>(emptyList()) }
+    var historyPoints by remember { mutableStateOf<List<PsmTopicPointEntry>>(emptyList()) }
+    var sectionCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var dpDate by remember { mutableStateOf("") }
+    var dpCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var saCount by remember { mutableStateOf(0) }
+
+    val dpParts = listOf(Triple("theoryRaw", "Theories, Devices & Figures", 50), Triple("literatureRaw", "Literature", 50), Triple("mixedRaw", "Mixed — All Topics", 125))
+
+    LaunchedEffect(catKey) {
+        val db = FirebaseDatabase.getInstance()
+        db.getReference("premiumContent").child(catKey).get().addOnSuccessListener { s ->
+            loading = false
+            syllabus = s.child("syllabus").getValue(String::class.java) ?: ""
+            writers = s.child("writers").children.mapNotNull { c ->
+                val key = c.key ?: return@mapNotNull null
+                PsmWriterEntry(key, c.child("name").getValue(String::class.java) ?: "Untitled")
+            }
+            val ts = s.child("topicSections")
+            historyPoints = ts.child(PSM_HISTORY_KEY).child("points").children.mapNotNull { c ->
+                val key = c.key ?: return@mapNotNull null
+                PsmTopicPointEntry(key, c.child("title").getValue(String::class.java) ?: "", c.child("content").getValue(String::class.java) ?: "", null)
+            }
+            val counts = mutableMapOf<String, Int>()
+            PSM_NOTES_SECTIONS.forEach { sec -> counts[sec.key] = ts.child(sec.key).child("points").childrenCount.toInt() }
+            sectionCounts = counts
+        }.addOnFailureListener { loading = false }
+
+        db.getReference("dailyPractice").child(catKey).get().addOnSuccessListener { s ->
+            dpDate = s.child("date").getValue(String::class.java) ?: ""
+            val counts = mutableMapOf<String, Int>()
+            dpParts.forEach { (key, _, _) -> counts[key] = psmParseQuestions(s.child(key).getValue(String::class.java) ?: "").size }
+            dpCounts = counts
+        }
+        db.getReference("selfAssessment").child(catKey).child("raw").get().addOnSuccessListener { s ->
+            saCount = psmParseQuestions(s.getValue(String::class.java) ?: "").size
+        }
+    }
+
+    if (loading) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PSM_NAVY) }
+        return
+    }
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Box(modifier = Modifier.fillMaxWidth().background(PSM_NAVY).padding(vertical = 18.dp)) {
+            Text("Welcome to our premium class", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        }
+
+        if (syllabus.isNotBlank()) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth()
+                    .background(Color.White, RoundedCornerShape(16.dp))
+                    .padding(18.dp)
+            ) {
+                Text("SYLLABUS", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = PSM_TEAL)
+                Spacer(Modifier.height(10.dp))
+                Text(syllabus, fontSize = 13.5.sp, color = Color(0xFF1A1A1A), lineHeight = 21.sp)
+            }
+        }
+
+        if (writers.isNotEmpty()) {
+            Text("Writers", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                writers.forEachIndexed { index, w ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp)
+                            .background(Color.White, RoundedCornerShape(16.dp))
+                            .border(1.5.dp, PSM_GOLD, RoundedCornerShape(16.dp))
+                            .clickable { onOpenWriter(w.key, w.name) }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.size(30.dp).background(PSM_NAVY, CircleShape), contentAlignment = Alignment.Center) {
+                            Text("${index + 1}", color = PSM_GOLD, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Text(w.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A), modifier = Modifier.weight(1f))
+                        Button(
+                            onClick = { onOpenWriter(w.key, w.name) },
+                            colors = ButtonDefaults.buttonColors(containerColor = PSM_CORAL),
+                            shape = RoundedCornerShape(100.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text("Read Biography", color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (historyPoints.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .fillMaxWidth()
+                    .background(Color.White, RoundedCornerShape(14.dp))
+                    .padding(vertical = 14.dp, horizontal = 16.dp)
+            ) {
+                Text("📜 History of English Literature", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
+            }
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                itemsIndexed(historyPoints) { index, p ->
+                    val gradient = if (index % 2 == 0) Brush.linearGradient(listOf(PSM_TEAL, Color(0xFF0F4550)))
+                        else Brush.linearGradient(listOf(PSM_MAROON, Color(0xFF4A1414)))
+                    Column(
+                        modifier = Modifier
+                            .width(200.dp)
+                            .background(gradient, RoundedCornerShape(16.dp))
+                            .border(1.5.dp, PSM_GOLD, RoundedCornerShape(16.dp))
+                            .padding(16.dp)
+                    ) {
+                        Text(p.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.height(64.dp))
+                        Spacer(Modifier.weight(1f))
+                        Box(
+                            modifier = Modifier
+                                .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                .clickable { onOpenHistoryPoint(p.key, p.title, p.content) }
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Text("READ →", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        Text("Topic-wise Notes", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            PSM_NOTES_SECTIONS.forEach { sec ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp)
+                        .background(Color.White, RoundedCornerShape(14.dp))
+                        .border(1.5.dp, PSM_GOLD, RoundedCornerShape(14.dp))
+                        .clickable { onOpenSection(sec.key, sec.label) }
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(sec.label, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
+                    Text("${sectionCounts[sec.key] ?: 0} topics ›", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = PSM_GOLD)
+                }
+            }
+        }
+
+        Text("Daily Practice — 225 Questions", fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            dpParts.forEach { (key, label, max) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp)
+                        .background(Color(0xFFFCF3D9), RoundedCornerShape(14.dp))
+                        .border(1.5.dp, PSM_GOLD, RoundedCornerShape(14.dp))
+                        .clickable { onOpenDailyPractice(key, label) }
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(label, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A), modifier = Modifier.weight(1f))
+                    Text(
+                        "${dpCounts[key] ?: 0} / $max Q${if (dpDate.isNotEmpty()) " · $dpDate" else ""} ›",
+                        fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF946B00)
+                    )
+                }
+            }
+        }
+
+        Text("Self Assessment", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+                .fillMaxWidth()
+                .background(PSM_NAVY, RoundedCornerShape(18.dp))
+                .padding(20.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("🎯", fontSize = 26.sp)
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("Self Assessment", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text("$saCount Questions • 30 sec per question", color = PSM_GOLD, fontSize = 12.sp)
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = onOpenSelfAssessment,
+                colors = ButtonDefaults.buttonColors(containerColor = PSM_CORAL),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth().height(48.dp)
+            ) {
+                Text("▶ Start Test", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth()
+                .background(PSM_NAVY, RoundedCornerShape(18.dp))
+                .padding(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(PSM_MAROON, RoundedCornerShape(12.dp))
+                    .padding(vertical = 16.dp)
+            ) {
+                Text("📊 Progress Analytics", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            }
+        }
+
+        Spacer(Modifier.height(40.dp))
+    }
+}
+
+@Composable
+private fun PsmWriterDetailView(writerName: String, onBio: () -> Unit, onCritical: () -> Unit, onWorks: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(20.dp)) {
-        PsmHomeButton("📘 Syllabus", "Full exam syllabus & pattern", onSyllabus)
-        PsmHomeButton("✍️ Writers & Works", "Biography, Critical Comments, Works", onWriters)
-        PsmHomeButton("📖 Topic-wise Notes", "Literary Devices, Theories, Grammar & more", onTopics)
-        PsmHomeButton("🔥 Daily Practice", "225 fresh questions every day", onDailyPractice)
-        PsmHomeButton("🎯 Self Assessment", "50 Q timed test — see where you stand", onSelfAssessment)
+        Text(writerName, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A))
+        Spacer(Modifier.height(18.dp))
+        PsmHomeButton("📝 Biography", "Life, background & career", onBio)
+        PsmHomeButton("💬 Critical Comments", "What critics & scholars said", onCritical)
+        PsmHomeButton("📚 Works", "Novels, Drama, Poems, Sonnets & more", onWorks)
     }
 }
 
@@ -167,80 +422,6 @@ private fun PsmHomeButton(title: String, subtitle: String, onClick: () -> Unit) 
 }
 
 @Composable
-private fun PsmSyllabusView(catKey: String) {
-    var loading by remember { mutableStateOf(true) }
-    var syllabus by remember { mutableStateOf("") }
-    LaunchedEffect(Unit) {
-        FirebaseDatabase.getInstance().getReference("premiumContent").child(catKey).child("syllabus")
-            .get().addOnSuccessListener { syllabus = it.getValue(String::class.java) ?: ""; loading = false }
-            .addOnFailureListener { loading = false }
-    }
-    Column(Modifier.fillMaxSize().padding(20.dp)) {
-        if (loading) {
-            CircularProgressIndicator(color = PSM_NAVY)
-        } else if (syllabus.isBlank()) {
-            Text("Syllabus abhi upload nahi hua.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
-        } else {
-            LazyColumn { item { Text(syllabus, fontSize = 14.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp) } }
-        }
-    }
-}
-
-private data class PsmWriterEntry(val key: String, val name: String)
-
-@Composable
-private fun PsmWritersListView(catKey: String, onOpen: (String, String) -> Unit) {
-    var loading by remember { mutableStateOf(true) }
-    var writers by remember { mutableStateOf<List<PsmWriterEntry>>(emptyList()) }
-    LaunchedEffect(Unit) {
-        FirebaseDatabase.getInstance().getReference("premiumContent").child(catKey).child("writers")
-            .get().addOnSuccessListener { snapshot ->
-                loading = false
-                writers = snapshot.children.mapNotNull { c ->
-                    val key = c.key ?: return@mapNotNull null
-                    PsmWriterEntry(key, c.child("name").getValue(String::class.java) ?: "Untitled")
-                }
-            }.addOnFailureListener { loading = false }
-    }
-    Column(Modifier.fillMaxSize().padding(20.dp)) {
-        if (loading) {
-            CircularProgressIndicator(color = PSM_NAVY)
-        } else if (writers.isEmpty()) {
-            Text("Koi writers abhi add nahi hue.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(writers) { w ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.White, RoundedCornerShape(14.dp))
-                            .border(1.5.dp, PSM_GOLD, RoundedCornerShape(14.dp))
-                            .clickable { onOpen(w.key, w.name) }
-                            .padding(horizontal = 16.dp, vertical = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(w.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
-                        Text("›", fontSize = 20.sp, color = PSM_CORAL, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PsmWriterDetailView(writerName: String, onBio: () -> Unit, onCritical: () -> Unit, onWorks: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(20.dp)) {
-        Text(writerName, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A))
-        Spacer(Modifier.height(18.dp))
-        PsmHomeButton("📝 Biography", "Life, background & career", onBio)
-        PsmHomeButton("💬 Critical Comments", "What critics & scholars said", onCritical)
-        PsmHomeButton("📚 Works", "Novels, Drama, Poems, Sonnets & more", onWorks)
-    }
-}
-
-@Composable
 private fun PsmTextFieldView(catKey: String, writerKey: String, field: String, title: String) {
     var loading by remember { mutableStateOf(true) }
     var text by remember { mutableStateOf("") }
@@ -262,8 +443,6 @@ private fun PsmTextFieldView(catKey: String, writerKey: String, field: String, t
         }
     }
 }
-
-private data class PsmWorkEntry(val key: String, val title: String, val type: String)
 
 @Composable
 private fun PsmWorksListView(catKey: String, writerKey: String, onOpen: (String, String) -> Unit) {
@@ -339,10 +518,7 @@ private fun PsmWorkDetailView(catKey: String, writerKey: String, workKey: String
 
     Column(Modifier.fillMaxSize()) {
         Text(title, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A), modifier = Modifier.padding(20.dp))
-        Row(
-            modifier = Modifier.padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
+        Row(modifier = Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf("summary" to "Summary", "characters" to "Characters", "lines" to "Lines", "themes" to "Themes", "questions" to "MCQs").forEach { (key, label) ->
                 val active = activeTab == key
                 Box(
@@ -379,47 +555,11 @@ private fun PsmWorkDetailView(catKey: String, writerKey: String, workKey: String
     }
 }
 
-private data class PsmTopicPointEntry(val key: String, val title: String, val content: String, val group: String?)
-
-@Composable
-private fun PsmTopicSectionsListView(onOpen: (String, String) -> Unit) {
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(TSA_SECTION_DEFS_PUBLIC) { sec ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White, RoundedCornerShape(14.dp))
-                    .border(1.5.dp, PSM_GOLD, RoundedCornerShape(14.dp))
-                    .clickable { onOpen(sec.key, sec.label) }
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(sec.label, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
-                Text("›", fontSize = 20.sp, color = PSM_CORAL, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-// Public mirror of the section defs (kept separate from AdminTopicSectionsCard's private list).
-private data class PsmSectionDef(val key: String, val label: String)
-private val TSA_SECTION_DEFS_PUBLIC = listOf(
-    PsmSectionDef("historyOfEnglishLiterature", "History of English Literature"),
-    PsmSectionDef("formsOfLiterature", "Forms of Literature"),
-    PsmSectionDef("literaryDevices", "Literary Term / Device"),
-    PsmSectionDef("figuresOfSpeech", "Figure of Speech"),
-    PsmSectionDef("literaryTheories", "Literary Theories"),
-    PsmSectionDef("literaryMovements", "Literary Movements"),
-    PsmSectionDef("grammar", "Grammar Section")
-)
-private val TSA_GROUPS_PUBLIC = mapOf("formsOfLiterature" to listOf("Poetry", "Prose", "Drama", "Cross-Genre / Mixed Forms"))
-
 @Composable
 private fun PsmTopicPointsListView(catKey: String, sectionKey: String, labelIn: String, onOpen: (String, String, String) -> Unit) {
     var loading by remember { mutableStateOf(true) }
     var points by remember { mutableStateOf<List<PsmTopicPointEntry>>(emptyList()) }
-    val label = TSA_SECTION_DEFS_PUBLIC.find { it.key == sectionKey }?.label ?: labelIn
+    val label = PSM_SECTION_DEFS.find { it.key == sectionKey }?.label ?: labelIn
 
     LaunchedEffect(Unit) {
         FirebaseDatabase.getInstance().getReference("premiumContent").child(catKey)
@@ -446,7 +586,7 @@ private fun PsmTopicPointsListView(catKey: String, sectionKey: String, labelIn: 
         } else if (points.isEmpty()) {
             Text("Abhi points add nahi hue.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
         } else {
-            val groups = TSA_GROUPS_PUBLIC[sectionKey]
+            val groups = PSM_GROUPS[sectionKey]
             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (groups != null) {
                     val ungrouped = points.filter { it.group == null || it.group !in groups }
@@ -498,25 +638,6 @@ private fun PsmTopicPointDetailView(title: String, content: String) {
 }
 
 @Composable
-private fun PsmDailyPracticeHomeView(catKey: String, onOpen: (String, String) -> Unit) {
-    var lastDate by remember { mutableStateOf("") }
-    val parts = listOf(Triple("theoryRaw", "Theories, Devices & Figures", 50), Triple("literatureRaw", "Literature", 50), Triple("mixedRaw", "Mixed — All Topics", 125))
-    LaunchedEffect(Unit) {
-        FirebaseDatabase.getInstance().getReference("dailyPractice").child(catKey).child("date")
-            .get().addOnSuccessListener { lastDate = it.getValue(String::class.java) ?: "" }
-    }
-    Column(Modifier.fillMaxSize().padding(20.dp)) {
-        Text("🔥 Daily Practice", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A))
-        Spacer(Modifier.height(4.dp))
-        Text("Aaj ka set: ${if (lastDate.isEmpty()) "Not generated yet" else lastDate}", fontSize = 11.5.sp, color = Color(0xFF5B5F6B))
-        Spacer(Modifier.height(16.dp))
-        parts.forEach { (key, label, max) ->
-            PsmHomeButton(label, "Up to $max questions", onClick = { onOpen(key, label) })
-        }
-    }
-}
-
-@Composable
 private fun PsmMcqPracticeView(catKey: String, firebaseRoot: String, partOrSetKey: String, label: String) {
     var loading by remember { mutableStateOf(true) }
     var questions by remember { mutableStateOf<List<PsmQuestion>>(emptyList()) }
@@ -555,11 +676,11 @@ private fun PsmInlineMcqList(questions: List<PsmQuestion>, modifier: Modifier = 
                 }
                 Spacer(Modifier.height(8.dp))
                 Column(modifier = Modifier.padding(start = 34.dp)) {
-                    q.options.forEach { opt ->
-                        val letter = opt.substringBefore(")").trim()
+                    q.options.forEachIndexed { optIdx, opt ->
+                        val letter = psmOptionLetter(opt, optIdx)
                         val isCorrect = letter == q.correctAnswer.trim()
                         Text(
-                            opt,
+                            "$letter) ${psmOptionText(opt)}",
                             fontSize = 13.sp,
                             color = if (isCorrect) PSM_GREEN else Color(0xFF5B5F6B),
                             fontWeight = if (isCorrect) FontWeight.Bold else FontWeight.Normal,
@@ -573,7 +694,6 @@ private fun PsmInlineMcqList(questions: List<PsmQuestion>, modifier: Modifier = 
     }
 }
 
-// ---------- Self Assessment: 30s/question timed quiz, exact behavior parity with the old app ----------
 private const val SA_TIME_PER_Q = 30
 
 @Composable
@@ -581,7 +701,7 @@ private fun PsmSelfAssessmentView(catKey: String, mobile: String) {
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(true) }
     var questions by remember { mutableStateOf<List<PsmQuestion>>(emptyList()) }
-    var stage by remember { mutableStateOf("intro") } // intro | quiz | result
+    var stage by remember { mutableStateOf("intro") }
     var idx by remember { mutableStateOf(0) }
     var score by remember { mutableStateOf(0) }
     var correctCount by remember { mutableStateOf(0) }
@@ -622,7 +742,6 @@ private fun PsmSelfAssessmentView(catKey: String, mobile: String) {
         }
     }
 
-    // Timer loop — restarts whenever a new question begins (timerTick changes) or the quiz starts.
     LaunchedEffect(stage, timerTick) {
         if (stage != "quiz") return@LaunchedEffect
         while (timeLeft > 0 && !answered) {
@@ -632,7 +751,6 @@ private fun PsmSelfAssessmentView(catKey: String, mobile: String) {
         if (timeLeft <= 0 && !answered) lockAnswer(null)
     }
 
-    // Save first-attempt-only score once result is shown.
     LaunchedEffect(stage) {
         if (stage == "result" && mobile.isNotEmpty()) {
             val total = questions.size
@@ -640,15 +758,7 @@ private fun PsmSelfAssessmentView(catKey: String, mobile: String) {
             val scoreRef = FirebaseDatabase.getInstance().getReference("saScores").child(catKey).child(mobile)
             scoreRef.get().addOnSuccessListener { snap ->
                 if (!snap.exists()) {
-                    scoreRef.setValue(
-                        mapOf(
-                            "name" to "Student",
-                            "score" to score,
-                            "total" to total,
-                            "pct" to pct,
-                            "ts" to System.currentTimeMillis()
-                        )
-                    )
+                    scoreRef.setValue(mapOf("name" to "Student", "score" to score, "total" to total, "pct" to pct, "ts" to System.currentTimeMillis()))
                 }
             }
         }
@@ -706,8 +816,8 @@ private fun PsmSelfAssessmentView(catKey: String, mobile: String) {
                     Text(q.question, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
                     Spacer(Modifier.height(16.dp))
                     LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(q.options) { opt ->
-                            val letter = opt.substringBefore(")").trim()
+                        itemsIndexed(q.options) { optIdx, opt ->
+                            val letter = psmOptionLetter(opt, optIdx)
                             val correct = q.correctAnswer.trim()
                             val bg = when {
                                 !answered -> Color.White
@@ -721,15 +831,20 @@ private fun PsmSelfAssessmentView(catKey: String, mobile: String) {
                                 letter == selectedLetter -> PSM_RED
                                 else -> Color(0xFFE3DFD3)
                             }
-                            Box(
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(bg, RoundedCornerShape(12.dp))
                                     .border(1.5.dp, border, RoundedCornerShape(12.dp))
                                     .clickable(enabled = !answered) { selectedLetter = letter; lockAnswer(letter) }
-                                    .padding(horizontal = 16.dp, vertical = 14.dp)
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(opt, fontSize = 14.sp, color = Color(0xFF1A1A1A))
+                                Box(modifier = Modifier.size(28.dp).background(Color(0xFFF5F3EC), CircleShape), contentAlignment = Alignment.Center) {
+                                    Text(letter, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = PSM_NAVY)
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Text(psmOptionText(opt), fontSize = 14.sp, color = Color(0xFF1A1A1A))
                             }
                         }
                     }
