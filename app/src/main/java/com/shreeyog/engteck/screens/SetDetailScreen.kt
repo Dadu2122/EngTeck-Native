@@ -287,7 +287,7 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
             }
         } else {
             LazyColumn(
-                modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
+                modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 items(questions) { q ->
@@ -359,7 +359,7 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                     fontWeight = if (bgColor != Color.Transparent) FontWeight.Bold else FontWeight.Normal
                                 )
                             }
-                            HorizontalDivider(color = Color(0xFFF0EEE7), thickness = 0.5.dp)
+                            HorizontalDivider(color = Color(0xFFD9D3C4), thickness = 1.5.dp)
                         }
 
                         if (showAnswers && q.correctAnswer.isNotEmpty()) {
