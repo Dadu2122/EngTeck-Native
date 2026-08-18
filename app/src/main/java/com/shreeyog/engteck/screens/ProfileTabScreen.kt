@@ -108,7 +108,7 @@ private fun AdminPanelScreen() {
         Spacer(Modifier.height(10.dp))
         AdminAccordionSection("Scores Manager", "🏆") { AdminScoresManagerCard() }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Mini Book Upload", "📕") { AdminMiniBookUploadCard() }
+        AdminAccordionSection("Special Note Books", "📕") { AdminMiniBookUploadCard() }
         Spacer(Modifier.height(10.dp))
         AdminAccordionSection("Data Viewer", "📊") { AdminDataViewersCard() }
         Spacer(Modifier.height(30.dp))
