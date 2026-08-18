@@ -365,7 +365,7 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                 fontSize = 13.sp,
                                 color = Color(0xFF1F7A3D),
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 20.dp, top = 8.dp, bottom = 8.dp)
+                                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp)
                             )
                         }
                         HorizontalDivider(color = Color(0xFFE3DFD3), thickness = 3.dp)
