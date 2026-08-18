@@ -287,12 +287,17 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
             }
         } else {
             LazyColumn(
-                modifier = Modifier.weight(1f).padding(horizontal = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
                 items(questions) { q ->
-                    Column(modifier = Modifier.padding(bottom = 18.dp)) {
-                        Row(verticalAlignment = Alignment.Top) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .size(26.dp)
@@ -305,74 +310,65 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                             Spacer(Modifier.width(10.dp))
                             Text(q.question, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
                         }
-                        Spacer(Modifier.height(10.dp))
-                        Column(modifier = Modifier.padding(start = 36.dp)) {
-                            val userSelected = selectedAnswers[q.number]
-                            q.options.forEach { opt ->
-                                val optLetter = opt.substringBefore(")").trim()
-                                val correctLetter = q.correctAnswer.trim()
-                                val isSelected = userSelected == optLetter
-                                val isCorrectOption = optLetter == correctLetter
 
-                                val bgColor = when {
-                                    showAnswers -> Color.Transparent
-                                    userSelected == null -> Color.Transparent
-                                    isSelected && isCorrectOption -> Color(0xFFDCF5E0)
-                                    isSelected && !isCorrectOption -> Color(0xFFFBE0DE)
-                                    isCorrectOption -> Color(0xFFDCF5E0)
-                                    else -> Color.Transparent
-                                }
-                                val textColor = when {
-                                    showAnswers -> Color(0xFF5B5F6B)
-                                    userSelected == null -> Color(0xFF5B5F6B)
-                                    isSelected && isCorrectOption -> Color(0xFF1F7A3D)
-                                    isSelected && !isCorrectOption -> Color(0xFFC0392B)
-                                    isCorrectOption -> Color(0xFF1F7A3D)
-                                    else -> Color(0xFF5B5F6B)
-                                }
-                                val borderColor = when {
-                                    showAnswers -> Color(0xFFE3DFD3)
-                                    bgColor == Color.Transparent -> Color(0xFFCFCAC0)
-                                    else -> textColor
-                                }
-                                val boxBg = when {
-                                    showAnswers -> Color.White
-                                    bgColor == Color.Transparent -> Color(0xFFFAF8F3)
-                                    else -> bgColor
-                                }
+                        val userSelected = selectedAnswers[q.number]
+                        q.options.forEach { opt ->
+                            val optLetter = opt.substringBefore(")").trim()
+                            val correctLetter = q.correctAnswer.trim()
+                            val isSelected = userSelected == optLetter
+                            val isCorrectOption = optLetter == correctLetter
 
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(boxBg)
-                                        .border(1.5.dp, borderColor, RoundedCornerShape(10.dp))
-                                        .clickable(enabled = !showAnswers && userSelected == null) {
-                                            selectedAnswers = selectedAnswers + (q.number to optLetter)
-                                        }
-                                        .padding(vertical = 12.dp, horizontal = 14.dp)
-                                ) {
-                                    Text(
-                                        opt,
-                                        fontSize = 14.sp,
-                                        color = if (showAnswers) Color(0xFF1A1A1A) else textColor,
-                                        fontWeight = if (bgColor != Color.Transparent) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                }
+                            val bgColor = when {
+                                showAnswers -> Color.Transparent
+                                userSelected == null -> Color.Transparent
+                                isSelected && isCorrectOption -> Color(0xFFDCF5E0)
+                                isSelected && !isCorrectOption -> Color(0xFFFBE0DE)
+                                isCorrectOption -> Color(0xFFDCF5E0)
+                                else -> Color.Transparent
                             }
-                            if (showAnswers && q.correctAnswer.isNotEmpty()) {
+                            val textColor = when {
+                                showAnswers -> Color(0xFF5B5F6B)
+                                userSelected == null -> Color(0xFF5B5F6B)
+                                isSelected && isCorrectOption -> Color(0xFF1F7A3D)
+                                isSelected && !isCorrectOption -> Color(0xFFC0392B)
+                                isCorrectOption -> Color(0xFF1F7A3D)
+                                else -> Color(0xFF5B5F6B)
+                            }
+                            val boxBg = when {
+                                showAnswers -> Color.White
+                                bgColor == Color.Transparent -> Color(0xFFFAF8F3)
+                                else -> bgColor
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(boxBg)
+                                    .clickable(enabled = !showAnswers && userSelected == null) {
+                                        selectedAnswers = selectedAnswers + (q.number to optLetter)
+                                    }
+                                    .padding(vertical = 12.dp, horizontal = 20.dp)
+                            ) {
                                 Text(
-                                    "Correct Answer: ${q.correctAnswer}",
-                                    fontSize = 13.sp,
-                                    color = Color(0xFF1F7A3D),
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(top = 6.dp)
+                                    opt,
+                                    fontSize = 14.sp,
+                                    color = if (showAnswers) Color(0xFF1A1A1A) else textColor,
+                                    fontWeight = if (bgColor != Color.Transparent) FontWeight.Bold else FontWeight.Normal
                                 )
                             }
+                            HorizontalDivider(color = Color(0xFFE3DFD3), thickness = 0.5.dp)
                         }
-                        Spacer(Modifier.height(10.dp))
-                        HorizontalDivider(color = Color(0xFFE3DFD3))
+
+                        if (showAnswers && q.correctAnswer.isNotEmpty()) {
+                            Text(
+                                "Correct Answer: ${q.correctAnswer}",
+                                fontSize = 13.sp,
+                                color = Color(0xFF1F7A3D),
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 20.dp, top = 8.dp, bottom = 8.dp)
+                            )
+                        }
+                        HorizontalDivider(color = Color(0xFFE3DFD3), thickness = 3.dp)
                     }
                 }
                 item { Spacer(Modifier.height(80.dp)) }
