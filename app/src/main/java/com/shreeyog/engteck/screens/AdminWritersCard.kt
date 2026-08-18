@@ -28,7 +28,123 @@ private val WRITER_CATS = listOf(
 )
 
 data class WriterEntry(val key: String, val name: String, val workCount: Int)
-data class WorkEntry(val key: String, val title: String)
+data class WorkEntry(val key: String, val title: String, val type: String)
+
+// Same work-type sections as the web app's Manage Works panel — works are grouped under
+// these headers (Main Novels, Minor Novels, Novels, Short Story Collections, Collections,
+// Drama, Poems, Sonnets, Non-Fiction, Essays) in this fixed display order.
+data class WorkTypeSection(val key: String, val label: String)
+val WORK_TYPE_SECTIONS = listOf(
+    WorkTypeSection("mainNovel", "Main Novels"),
+    WorkTypeSection("minorNovel", "Minor Novels"),
+    WorkTypeSection("novel", "Novels"),
+    WorkTypeSection("shortStory", "Short Story Collections"),
+    WorkTypeSection("collection", "Collections"),
+    WorkTypeSection("drama", "Drama"),
+    WorkTypeSection("individual", "Poems"),
+    WorkTypeSection("sonnet", "Sonnets"),
+    WorkTypeSection("prose", "Non-Fiction"),
+    WorkTypeSection("essay", "Essays")
+)
+fun workTypeLabel(key: String): String = WORK_TYPE_SECTIONS.find { it.key == key }?.label ?: "Poems"
+
+// ---------- Auto-classification of a work's category from its title, ported from the web app's
+// guessWorkType() so the native admin panel guesses the same category (Drama/Novel/Sonnet/etc.)
+// for known Shakespeare/Milton/Wordsworth/Keats/Galsworthy/Orwell works. Admin can still override
+// via the chip selector; this only sets a smart default. ----------
+private val KNOWN_DRAMA_TITLES = setOf(
+    "henry vi, part 1", "henry vi, part 2", "henry vi, part 3", "richard iii", "king john",
+    "richard ii", "henry iv, part 1", "henry iv, part 2", "henry v", "henry viii",
+    "the comedy of errors", "the taming of the shrew", "the two gentlemen of verona",
+    "love's labour's lost", "a midsummer night's dream", "the merchant of venice",
+    "the merry wives of windsor", "much ado about nothing", "as you like it", "twelfth night",
+    "troilus and cressida", "all's well that ends well", "measure for measure",
+    "titus andronicus", "romeo and juliet", "julius caesar", "hamlet", "othello", "king lear",
+    "macbeth", "antony and cleopatra", "coriolanus", "timon of athens", "pericles", "cymbeline",
+    "the winter's tale", "the tempest",
+    "the borderers", // Wordsworth's one play
+    "otho the great", "king stephen", // Keats' dramas
+    "comus", "samson agonistes" // Milton's dramas
+)
+private val KNOWN_COLLECTION_TITLES = setOf(
+    "an evening walk", "descriptive sketches", "lyrical ballads", "lyrical ballads, 2nd edition",
+    "poems, in two volumes", "the excursion", "poems (collected edition)",
+    "the white doe of rylstone", "peter bell", "the waggoner", "ecclesiastical sketches", "the prelude",
+    "poems", "endymion", "endymion: a poetic romance",
+    "lamia, isabella, the eve of st. agnes, and other poems",
+    "poems of mr. john milton, both english and latin", "paradise lost", "paradise regained"
+)
+private val KNOWN_PROSE_TITLES = setOf(
+    "the convention of cintra", "guide to the lakes",
+    "of reformation touching church-discipline in england", "of prelatical episcopacy",
+    "animadversions upon the remonstrant's defence", "the reason of church-government urged against prelaty",
+    "an apology for smectymnuus", "the doctrine and discipline of divorce",
+    "the judgement of martin bucer concerning divorce", "of education", "areopagitica",
+    "tetrachordon", "colasterion", "the tenure of kings and magistrates", "eikonoklastes",
+    "a treatise of civil power in ecclesiastical causes",
+    "considerations touching the likeliest means to remove hirelings",
+    "the ready and easy way to establish a free commonwealth", "a history of britain",
+    "of true religion, heresy, schism, toleration",
+    "defensio pro populo anglicano", "defensio secunda", "pro se defensio",
+    "artis logicae", "de doctrina christiana",
+    "down and out in paris and london", "the road to wigan pier", "homage to catalonia"
+)
+private val KNOWN_NOVEL_TITLES = setOf(
+    "burmese days", "a clergyman's daughter", "keep the aspidistra flying",
+    "coming up for air", "animal farm", "nineteen eighty-four", "1984"
+)
+private val KNOWN_ESSAY_TITLES = setOf(
+    "a hanging", "shooting an elephant", "charles dickens", "boys' weeklies",
+    "inside the whale", "the lion and the unicorn: socialism and the english genius",
+    "my country right or left", "marrakech", "politics and the english language",
+    "why i write", "some thoughts on the common toad", "decline of the english murder",
+    "politics vs. literature: an examination of gulliver's travels", "how the poor die",
+    "notes on nationalism", "such, such were the joys", "reflections on gandhi",
+    "a nice cup of tea", "confessions of a book reviewer", "books v. cigarettes",
+    "england your england", "the prevention of literature", "in front of your nose",
+    "rudyard kipling", "wells, hitler and the world state",
+    "arthur koestler", "raffles and miss blandish", "antisemitism in britain",
+    "you and the atomic bomb", "nonsense poetry", "poetry and the microphone",
+    "the sporting spirit", "pleasure spots", "a good word for the vicar of bray",
+    "lear, tolstoy and the fool", "writers and leviathan", "second thoughts on james burnham",
+    "bookshop memories", "spilling the spanish beans"
+)
+private val KNOWN_MAIN_NOVEL_TITLES = setOf(
+    "the forsyte saga", "the man of property", "in chancery", "awakening", "to let",
+    "indian summer of a forsyte", "a modern comedy", "the white monkey", "the silver spoon",
+    "a silent wooing", "swan song", "end of the chapter", "maid in waiting",
+    "flowering wilderness", "over the river", "the country house"
+)
+private val KNOWN_MINOR_NOVEL_TITLES = setOf(
+    "jocelyn", "villa rubein", "the island pharisees", "fraternity", "the patrician",
+    "the dark flower", "the freelands", "beyond", "saint's progress", "the burning spear",
+    "passers by"
+)
+private val KNOWN_SHORT_STORY_TITLES = setOf(
+    "from the four winds", "a commentary", "a motley", "the inn of tranquillity",
+    "memories", "the little man and other satires", "five tales", "tatterdemalion",
+    "captures", "on forsyte 'change", "stories from 'forsytes, pendyces and others'"
+)
+private fun baseWorkTitle(title: String): String {
+    return title
+        .substringBefore("—")
+        .replace(Regex("\\s*\\([^)]*\\)\\s*$"), "")
+        .trim().lowercase()
+}
+fun guessWorkType(title: String): String {
+    val t = baseWorkTitle(title)
+    if (t.isBlank()) return "individual"
+    if (Regex("^sonnet\\b").containsMatchIn(t)) return "sonnet"
+    if (KNOWN_DRAMA_TITLES.contains(t)) return "drama"
+    if (KNOWN_MAIN_NOVEL_TITLES.contains(t)) return "mainNovel"
+    if (KNOWN_MINOR_NOVEL_TITLES.contains(t)) return "minorNovel"
+    if (KNOWN_NOVEL_TITLES.contains(t)) return "novel"
+    if (KNOWN_SHORT_STORY_TITLES.contains(t)) return "shortStory"
+    if (KNOWN_ESSAY_TITLES.contains(t)) return "essay"
+    if (KNOWN_COLLECTION_TITLES.contains(t)) return "collection"
+    if (KNOWN_PROSE_TITLES.contains(t)) return "prose"
+    return "individual"
+}
 
 @Composable
 fun AdminWritersCard() {
@@ -53,7 +169,7 @@ fun AdminWritersCard() {
                     val name = child.child("name").getValue(String::class.java) ?: "Untitled"
                     val workCount = child.child("works").childrenCount.toInt()
                     WriterEntry(key, name, workCount)
-                }.sortedBy { it.name }
+                }
             }
             .addOnFailureListener { loading = false }
     }
@@ -328,8 +444,9 @@ private fun WorksListDialog(catKey: String, writerKey: String, writerName: Strin
                 works = snapshot.children.mapNotNull { child ->
                     val key = child.key ?: return@mapNotNull null
                     val t = child.child("title").getValue(String::class.java) ?: "Untitled"
-                    WorkEntry(key, t)
-                }.sortedBy { it.title }
+                    val type = child.child("type").getValue(String::class.java) ?: "individual"
+                    WorkEntry(key, t, type)
+                }
             }
             .addOnFailureListener { loading = false }
     }
@@ -352,23 +469,37 @@ private fun WorksListDialog(catKey: String, writerKey: String, writerName: Strin
                     Text("No works added yet.", fontSize = 12.sp, color = Color(0xFF5B5F6B))
                     Spacer(Modifier.height(10.dp))
                 } else {
-                    Column(modifier = Modifier.heightIn(max = 320.dp)) {
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(works) { w ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(w.title, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A), modifier = Modifier.weight(1f))
-                                    TextButton(onClick = { editorWorkKey = w.key; editorOpen = true }) { Text("Edit") }
-                                    TextButton(onClick = {
-                                        FirebaseDatabase.getInstance().getReference("premiumContent").child(catKey)
-                                            .child("writers").child(writerKey).child("works").child(w.key).removeValue()
-                                            .addOnSuccessListener { refreshTick++ }
-                                    }) { Text("✕", color = Color(0xFFC0392B)) }
+                    val grouped = WORK_TYPE_SECTIONS.map { sec -> sec to works.filter { it.type == sec.key } }
+                        .filter { it.second.isNotEmpty() }
+                    Column(modifier = Modifier.heightIn(max = 380.dp)) {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            grouped.forEach { (sec, secWorks) ->
+                                item {
+                                    Text(
+                                        "${sec.label} (${secWorks.size})",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1B6B79),
+                                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                                    )
+                                }
+                                items(secWorks) { w ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(w.title, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A), modifier = Modifier.weight(1f))
+                                        TextButton(onClick = { editorWorkKey = w.key; editorOpen = true }) { Text("Edit") }
+                                        TextButton(onClick = {
+                                            FirebaseDatabase.getInstance().getReference("premiumContent").child(catKey)
+                                                .child("writers").child(writerKey).child("works").child(w.key).removeValue()
+                                                .addOnSuccessListener { refreshTick++ }
+                                        }) { Text("✕", color = Color(0xFFC0392B)) }
+                                    }
+                                    Spacer(Modifier.height(4.dp))
                                 }
                             }
                         }
@@ -404,6 +535,8 @@ private fun WorksListDialog(catKey: String, writerKey: String, writerName: Strin
 @Composable
 private fun WorkEditorDialog(catKey: String, writerKey: String, workKey: String?, onDismiss: () -> Unit, onSaved: () -> Unit) {
     var title by remember { mutableStateOf("") }
+    var type by remember { mutableStateOf("individual") }
+    var typeTouched by remember { mutableStateOf(false) }
     var summary by remember { mutableStateOf("") }
     var characters by remember { mutableStateOf("") }
     var lines by remember { mutableStateOf("") }
@@ -420,6 +553,8 @@ private fun WorkEditorDialog(catKey: String, writerKey: String, workKey: String?
                 .get()
                 .addOnSuccessListener { s ->
                     title = s.child("title").getValue(String::class.java) ?: ""
+                    type = s.child("type").getValue(String::class.java) ?: "individual"
+                    typeTouched = true
                     summary = s.child("summary").getValue(String::class.java) ?: ""
                     characters = s.child("characters").getValue(String::class.java) ?: ""
                     lines = s.child("lines").getValue(String::class.java) ?: ""
@@ -446,7 +581,34 @@ private fun WorkEditorDialog(catKey: String, writerKey: String, workKey: String?
                 CircularProgressIndicator(color = Color(0xFF12203D))
             } else {
                 Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                    WorkField("Title", title, singleLine = true) { title = it }
+                    WorkField("Title", title, singleLine = true) { newTitle ->
+                        title = newTitle
+                        if (!typeTouched) type = guessWorkType(newTitle)
+                    }
+
+                    Text("Category", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF5B5F6B))
+                    Spacer(Modifier.height(6.dp))
+                    WORK_TYPE_SECTIONS.chunked(3).forEach { rowTypes ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+                            rowTypes.forEach { sec ->
+                                val active = type == sec.key
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .background(if (active) Color(0xFF1B6B79) else Color(0xFFF5F3EC), RoundedCornerShape(8.dp))
+                                        .border(1.dp, if (active) Color(0xFF1B6B79) else Color(0xFFE3DFD3), RoundedCornerShape(8.dp))
+                                        .clickable { type = sec.key; typeTouched = true }
+                                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(sec.label, color = if (active) Color.White else Color(0xFF5B5F6B), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            repeat(3 - rowTypes.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+
                     WorkField("Summary", summary) { summary = it }
                     WorkField("Characters", characters) { characters = it }
                     WorkField("Important Lines", lines) { lines = it }
@@ -470,7 +632,7 @@ private fun WorkEditorDialog(catKey: String, writerKey: String, workKey: String?
                         val targetKey = workKey ?: ref.push().key
                         if (targetKey == null) { saving = false; errorMsg = "Could not generate key."; return@Button }
                         val updates = mapOf(
-                            "title" to title, "summary" to summary, "characters" to characters,
+                            "title" to title, "type" to type, "summary" to summary, "characters" to characters,
                             "lines" to lines, "themes" to themes, "questions" to questions
                         )
                         ref.child(targetKey).updateChildren(updates)
