@@ -7,11 +7,6 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-// Same Vercel serverless endpoint the web app calls (create-razorpay-order.js) — it creates the
-// Razorpay order server-side and returns the orderId/amount/keyId needed to open Checkout. The
-// matching webhook (razorpay-webhook.js), already deployed on the same project, is what actually
-// writes the payment confirmation to Firebase after Razorpay verifies the payment — so this app
-// never needs to know the Razorpay secret key, exactly like the web app.
 private const val RAZORPAY_ORDER_SERVER = "https://shreeyog-agora-token-server.vercel.app/api/create-razorpay-order"
 
 data class RazorpayOrderResult(val orderId: String, val amount: Long, val keyId: String)
@@ -53,9 +48,6 @@ suspend fun createRazorpayOrder(amount: Int, bookKey: String, mobile: String, ti
     }
 }
 
-// Opens Razorpay Checkout on the given Activity (must be MainActivity, which implements
-// PaymentResultListener). Register success/error callbacks via RazorpayBridge before calling
-// this, since Checkout's result comes back through the Activity, not directly here.
 fun openRazorpayCheckout(
     activity: Activity,
     order: RazorpayOrderResult,
@@ -73,6 +65,35 @@ fun openRazorpayCheckout(
         put("amount", order.amount)
         put("theme.color", "#12203D")
         put("prefill.contact", mobile)
+        val upiBlock = JSONObject().apply {
+            put("name", "Pay using UPI")
+            put("instruments", org.json.JSONArray().apply {
+                put(JSONObject().apply { put("method", "upi") })
+            })
+        }
+        val cardBlock = JSONObject().apply {
+            put("name", "Pay using Card")
+            put("instruments", org.json.JSONArray().apply {
+                put(JSONObject().apply { put("method", "card") })
+            })
+        }
+        val blocks = JSONObject().apply {
+            put("upi", upiBlock)
+            put("card", cardBlock)
+        }
+        val display = JSONObject().apply {
+            put("blocks", blocks)
+            put("sequence", org.json.JSONArray().apply {
+                put("block.upi")
+                put("block.card")
+            })
+            put("preferences", JSONObject().apply {
+                put("show_default_blocks", true)
+            })
+        }
+        put("config", JSONObject().apply {
+            put("display", display)
+        })
     }
     try {
         checkout.open(activity, options)
