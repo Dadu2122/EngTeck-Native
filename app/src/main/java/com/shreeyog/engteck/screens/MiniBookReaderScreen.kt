@@ -456,20 +456,37 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
 }
 
 // A pasted-text block is treated as an MCQ card if its first line looks like "Q1. ..." or "1. ...".
-// Every other non-blank line in the block becomes a plain read-only option row (letter prefixes,
-// if the admin included them, are stripped since these cards are for reading, not answering).
-private data class MiniBookMcq(val number: String, val question: String, val options: List<String>)
+// Every other non-blank line becomes a read-only option row. If the admin included a
+// "Correct Answer: X" and/or "Explanation: ..." line, the correct option is highlighted and the
+// explanation is shown in a solid banner below the options.
+private data class MiniBookMcq(
+    val number: String,
+    val question: String,
+    val options: List<String>,
+    val correctLetter: String?,
+    val explanation: String?
+)
 private fun parseMiniBookMcqBlock(block: String): MiniBookMcq? {
     val lines = block.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
     if (lines.isEmpty()) return null
     val m = Regex("^Q?(\\d+)[.)]\\s*(.*)", RegexOption.IGNORE_CASE).find(lines[0]) ?: return null
     val number = m.groupValues[1]
     val question = m.groupValues[2]
-    val options = lines.drop(1)
-        .filterNot { it.startsWith("Correct Answer", ignoreCase = true) || it.startsWith("Explanation", ignoreCase = true) }
-        .map { it.replace(Regex("^\\(?[A-Da-d][.)]\\s*"), "") }
+
+    var correctLetter: String? = null
+    var explanation: String? = null
+    val options = mutableListOf<String>()
+    lines.drop(1).forEach { line ->
+        val ansMatch = Regex("^Correct Answer:\\s*\\(?([A-Da-d])[.)]?", RegexOption.IGNORE_CASE).find(line)
+        val expMatch = Regex("^Explanation:\\s*(.*)", RegexOption.IGNORE_CASE).find(line)
+        when {
+            ansMatch != null -> correctLetter = ansMatch.groupValues[1].uppercase()
+            expMatch != null -> explanation = expMatch.groupValues[1]
+            else -> options.add(line.replace(Regex("^\\(?[A-Da-d][.)]\\s*"), ""))
+        }
+    }
     if (options.isEmpty()) return null
-    return MiniBookMcq(number, question, options)
+    return MiniBookMcq(number, question, options, correctLetter, explanation)
 }
 
 @Composable
@@ -486,15 +503,40 @@ private fun MiniBookMcqCard(mcq: MiniBookMcq) {
             fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A), lineHeight = 25.sp
         )
         Spacer(Modifier.height(14.dp))
-        mcq.options.forEach { opt ->
+        mcq.options.forEachIndexed { idx, opt ->
+            val letter = ('A' + idx).toString()
+            val isCorrect = mcq.correctLetter != null && letter == mcq.correctLetter
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 12.dp)
-                    .background(Color(0xFFF2F2F2), RoundedCornerShape(10.dp))
+                    .background(if (isCorrect) Color(0xFFDCF5E0) else Color(0xFFF2F2F2), RoundedCornerShape(10.dp))
+                    .then(
+                        if (isCorrect) Modifier.border(1.5.dp, Color(0xFF1F7A3D), RoundedCornerShape(10.dp))
+                        else Modifier
+                    )
                     .padding(vertical = 16.dp, horizontal = 18.dp)
             ) {
-                Text(opt, fontSize = 15.sp, color = Color(0xFF5B5F6B))
+                Text(
+                    if (isCorrect) "✓ $opt" else opt,
+                    fontSize = 15.sp,
+                    color = if (isCorrect) Color(0xFF1F7A3D) else Color(0xFF5B5F6B),
+                    fontWeight = if (isCorrect) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+        }
+        if (!mcq.explanation.isNullOrBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF12203D), RoundedCornerShape(10.dp))
+                    .padding(vertical = 14.dp, horizontal = 16.dp)
+            ) {
+                Text(
+                    "💡 Explanation: ${mcq.explanation}",
+                    fontSize = 13.5.sp, color = Color(0xFFF5E6B8), lineHeight = 20.sp
+                )
             }
         }
     }
