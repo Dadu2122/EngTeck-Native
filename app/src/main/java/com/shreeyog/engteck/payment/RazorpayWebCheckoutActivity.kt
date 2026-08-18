@@ -11,11 +11,12 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 
-// Loads Razorpay's own hosted checkout.js inside a WebView — exactly the same mechanism the
-// old WebView-based APK already used successfully (UPI, Cards, Netbanking, Wallet all show up
-// automatically because this is the real Razorpay web checkout page, not the native Android SDK
-// which has known UPI-detection bugs on newer Android versions). Results come back via a small
-// JS bridge that sets the Activity result and finishes.
+// Loads Razorpay's own hosted checkout.js inside a WebView. Mirrors the exact fixes already
+// proven to work in the WebView-based EngTeck APK's MainActivity: (1) stripping the ";
+// wv" and "Version/x.x" tokens from the User-Agent so Razorpay treats this like a real
+// Chrome browser and shows UPI, and (2) parsing "intent://" URIs properly via
+// Intent.parseUri(URI_INTENT_SCHEME) — Razorpay's UPI app links are Android Intent-URIs, not
+// plain "upi://" links, so a generic Uri.parse() + ACTION_VIEW silently does nothing.
 class RazorpayWebCheckoutActivity : Activity() {
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -32,32 +33,62 @@ class RazorpayWebCheckoutActivity : Activity() {
         val webView = WebView(this)
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
-        // Android WebViews add a "; wv" token to the User-Agent by default, which lets sites
-        // detect "this is an embedded WebView, not a real browser". Razorpay's checkout uses
-        // exactly this to decide whether to show UPI intent apps — it hides that section for
-        // WebView user agents as a safety default. Overriding it to a normal Chrome mobile UA
-        // (no "wv" token) makes Razorpay treat this exactly like its own web checkout.
-        webView.settings.userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+        // Strip both UA tokens that reveal "this is a WebView, not real Chrome" — Razorpay
+        // hides UPI when it detects either one.
+        val defaultUA = webView.settings.userAgentString
+        val cleanedUA = defaultUA
+            .replace("; wv", "")
+            .replace(Regex("Version/[0-9.]+\\s+"), "")
+        webView.settings.userAgentString = cleanedUA
+
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val url = request.url.toString()
-                // Any non-http(s) link here is a UPI app trying to open (upi://, tez://,
-                // phonepe://, paytmmp://, credpay://, etc.) — a plain WebView has no idea what
-                // to do with these, so without this override Razorpay just hides the whole UPI
-                // section since it knows tapping it would silently fail.
-                if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                val url = request.url
+                val scheme = url.scheme ?: ""
+
+                if (scheme == "http" || scheme == "https") {
+                    // Razorpay's own checkout pages — keep loading inside this WebView.
+                    return false
+                }
+
+                // Razorpay's UPI payment flow generates "intent://" links (Android's Intent-URI
+                // format), not plain "upi://" links. Intent.parseUri() with URI_INTENT_SCHEME is
+                // required to correctly read the target package/action/fallback baked into the
+                // string — without this, tapping GPay/PhonePe/Paytm silently does nothing.
+                if (scheme == "intent") {
                     return try {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                        startActivity(intent)
+                        val realIntent = Intent.parseUri(url.toString(), Intent.URI_INTENT_SCHEME)
+                        startActivity(realIntent)
                         true
-                    } catch (e: ActivityNotFoundException) {
+                    } catch (e: Exception) {
+                        // Target UPI app isn't installed — Razorpay embeds a
+                        // "browser_fallback_url" (usually the app's Play Store page) inside the
+                        // intent string; open that instead of doing nothing.
+                        try {
+                            val fallbackUrl = Regex("S\\.browser_fallback_url=([^;]+)")
+                                .find(url.toString())?.groupValues?.get(1)
+                            if (fallbackUrl != null) {
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Uri.decode(fallbackUrl))))
+                            }
+                        } catch (e2: Exception) {
+                            // Nothing more we can do — app not installed and no usable fallback.
+                        }
                         true
                     }
                 }
-                return false
+
+                // Any other custom scheme (upi://, tez://, phonepe://, paytmmp:// etc.) —
+                // hand it straight to Android to open in the matching app.
+                return try {
+                    startActivity(Intent(Intent.ACTION_VIEW, url))
+                    true
+                } catch (e: ActivityNotFoundException) {
+                    true
+                }
             }
         }
+
         webView.addJavascriptInterface(JsBridge(), "AndroidPay")
         setContentView(webView)
 
