@@ -21,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -30,9 +31,11 @@ import coil.compose.AsyncImage
 import com.google.firebase.database.FirebaseDatabase
 import com.shreeyog.engteck.payment.buildRazorpayCheckoutIntent
 import com.shreeyog.engteck.payment.createRazorpayOrder
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
@@ -323,12 +326,18 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
                     CircularProgressIndicator(color = Color(0xFF12203D))
                 }
             } else if (hasPdf) {
+                MiniBookPdfPreview(
+                    pdfBase64 = pdfBase64,
+                    unlocked = price == 0L || unlocked,
+                    freePageCount = MINIBOOK_FREE_SECTIONS
+                )
                 if (price == 0L || unlocked) {
+                    Spacer(Modifier.height(16.dp))
                     Text(
                         if (unlocked) "Payment confirmed ✓ — you can now download the full PDF." else "This book is free.",
                         fontSize = 13.sp, color = Color(0xFF1F7A3D), fontWeight = FontWeight.Bold
                     )
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(10.dp))
                     Button(
                         onClick = {
                             val pb64 = pdfBase64
@@ -351,6 +360,7 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
                         Text("↓ Download Full PDF", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 } else {
+                    Spacer(Modifier.height(16.dp))
                     MiniBookPaywall(
                         price = price, mobile = mobile, upiId = upiId,
                         payingInProgress = payingInProgress, payMsg = payMsg,
@@ -361,6 +371,7 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
                         onCheckAccess = { startCheckAccess() }
                     )
                 }
+                Spacer(Modifier.height(30.dp))
             } else if (content == null) {
                 Text("No content found.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
             } else {
@@ -410,6 +421,87 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(30.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniBookPdfPreview(pdfBase64: String?, unlocked: Boolean, freePageCount: Int) {
+    val context = LocalContext.current
+    var loading by remember { mutableStateOf(true) }
+    var pageBitmaps by remember { mutableStateOf<List<android.graphics.Bitmap>>(emptyList()) }
+    var totalPages by remember { mutableStateOf(0) }
+    var errorMsg by remember { mutableStateOf("") }
+
+    LaunchedEffect(pdfBase64, unlocked) {
+        if (pdfBase64 == null) { loading = false; errorMsg = "PDF data not found."; return@LaunchedEffect }
+        loading = true
+        errorMsg = ""
+        withContext(Dispatchers.IO) {
+            try {
+                val raw = if (pdfBase64.contains(",")) pdfBase64.substringAfter(",") else pdfBase64
+                val bytes = Base64.decode(raw, Base64.DEFAULT)
+                val tempFile = File(context.cacheDir, "preview_${System.currentTimeMillis()}.pdf")
+                FileOutputStream(tempFile).use { it.write(bytes) }
+
+                val pfd = android.os.ParcelFileDescriptor.open(tempFile, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+                val renderer = android.graphics.pdf.PdfRenderer(pfd)
+                val pageCount = renderer.pageCount
+                val howMany = if (unlocked) pageCount else minOf(freePageCount, pageCount)
+                val bitmaps = mutableListOf<android.graphics.Bitmap>()
+                for (i in 0 until howMany) {
+                    val page = renderer.openPage(i)
+                    val scale = 2
+                    val bmp = android.graphics.Bitmap.createBitmap(page.width * scale, page.height * scale, android.graphics.Bitmap.Config.ARGB_8888)
+                    val canvas = android.graphics.Canvas(bmp)
+                    canvas.drawColor(android.graphics.Color.WHITE)
+                    page.render(bmp, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    bitmaps.add(bmp)
+                    page.close()
+                }
+                renderer.close()
+                pfd.close()
+                tempFile.delete()
+
+                withContext(Dispatchers.Main) {
+                    pageBitmaps = bitmaps
+                    totalPages = pageCount
+                    loading = false
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    loading = false
+                    errorMsg = "Could not open this PDF for preview."
+                }
+            }
+        }
+    }
+
+    when {
+        loading -> Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = Color(0xFF12203D))
+        }
+        errorMsg.isNotEmpty() -> Text(errorMsg, fontSize = 13.sp, color = Color(0xFFC0392B))
+        else -> {
+            Column {
+                pageBitmaps.forEach { bmp ->
+                    androidx.compose.foundation.Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp)
+                            .background(Color.White, RoundedCornerShape(10.dp))
+                            .border(1.dp, Color(0xFFE3DFD3), RoundedCornerShape(10.dp))
+                    )
+                }
+                if (!unlocked && totalPages > freePageCount) {
+                    Text(
+                        "Showing $freePageCount of $totalPages pages",
+                        fontSize = 11.5.sp, color = Color(0xFF5B5F6B), modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                }
             }
         }
     }
