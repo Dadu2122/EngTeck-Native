@@ -28,6 +28,14 @@ import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+private val PSM_NAVY = Color(0xFF12203D)
+private val PSM_GOLD = Color(0xFFD4A017)
+private val PSM_CORAL = Color(0xFFE85D4C)
+private val PSM_TEAL = Color(0xFF1B6B79)
+private val PSM_MAROON = Color(0xFF7A2E2E)
+private val PSM_GREEN = Color(0xFF1F7A3D)
+private val PSM_RED = Color(0xFFC0392B)
+
 // ---------- Simple text → PDF, used by the "Download PDF" button on Bio/Critical/Topic content pages ----------
 private fun psmSaveTextPdf(context: android.content.Context, title: String, body: String): String? {
     return try {
@@ -245,14 +253,6 @@ private fun PsmAnnotatableContent(context: android.content.Context, contentKey: 
     }
     PsmDownloadPdfButton(title, body)
 }
-
-private val PSM_NAVY = Color(0xFF12203D)
-private val PSM_GOLD = Color(0xFFD4A017)
-private val PSM_CORAL = Color(0xFFE85D4C)
-private val PSM_TEAL = Color(0xFF1B6B79)
-private val PSM_MAROON = Color(0xFF7A2E2E)
-private val PSM_GREEN = Color(0xFF1F7A3D)
-private val PSM_RED = Color(0xFFC0392B)
 
 // ---------- Shared parsing — matches the web app's parseQuestions + pcSplitCorrectAnswer exactly:
 // questions split on the next "N. " line (not blank lines), every subsequent line is an option
