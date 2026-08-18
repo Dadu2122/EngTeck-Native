@@ -213,12 +213,12 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
                     }
                     if (!confirmed) {
                         payingInProgress = false
-                        payMsg = "Payment confirm hone mein zyada time lag raha hai — thodi der baad dobara try karo."
+                        payMsg = "Payment confirmation is taking longer than usual — please try again in a moment."
                     }
                 }
             } else {
                 payingInProgress = false
-                payMsg = "Payment ho gaya lekin confirm nahi ho paya — dobara try karo."
+                payMsg = "Payment went through but could not be confirmed — please try again."
             }
         } else {
             payingInProgress = false
@@ -246,8 +246,8 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
     }
 
     fun startPayNow() {
-        if (mobile.length != 10) { payMsg = "Pehle 10-digit mobile number bharo."; return }
-        if (context !is Activity) { payMsg = "Payment shuru nahi ho paya."; return }
+        if (mobile.length != 10) { payMsg = "Please enter a valid 10-digit mobile number."; return }
+        if (context !is Activity) { payMsg = "Could not start payment."; return }
         payingInProgress = true
         payMsg = ""
         val key = "book_${bookKey}_${System.currentTimeMillis()}"
@@ -256,7 +256,7 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
             val order = createRazorpayOrder(price.toInt(), key, mobile, title)
             if (order == null) {
                 payingInProgress = false
-                payMsg = "Instant payment abhi setup nahi hua. Thodi der baad try karo ya UPI QR se pay karo."
+                payMsg = "Instant payment isn't set up yet. Try again shortly, or pay via the UPI QR below."
                 return@launch
             }
             prefs.edit().putString("sp_mobile", mobile).apply()
@@ -266,7 +266,7 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
     }
 
     fun startCheckAccess() {
-        if (mobile.length != 10) { manualMsg = "Pehle 10-digit mobile number bharo."; return }
+        if (mobile.length != 10) { manualMsg = "Please enter a valid 10-digit mobile number."; return }
         checkingManual = true
         manualMsg = "Checking…"
         scope.launch {
@@ -289,7 +289,7 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
             }
             if (!confirmed) {
                 checkingManual = false
-                manualMsg = "Abhi tak payment confirm nahi hua. Pay karne ke baad thodi der wait karke dobara try karo, ya admin se \"Mark as Paid\" karwao."
+                manualMsg = "Payment not confirmed yet. If you've already paid, wait a moment and try again — or ask the admin to Mark as Paid."
             }
         }
     }
@@ -321,7 +321,7 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
             } else if (pdfUrl != null) {
                 if (price == 0L || unlocked) {
                     Text(
-                        if (unlocked) "Payment confirmed ✓ — poori PDF download ho sakti hai." else "Ye book free hai.",
+                        if (unlocked) "Payment confirmed ✓ — you can now download the full PDF." else "This book is free.",
                         fontSize = 13.sp, color = Color(0xFF1F7A3D), fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(14.dp))
@@ -441,7 +441,7 @@ private fun MiniBookPaywall(
             .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(16.dp))
             .padding(18.dp)
     ) {
-        Text("🔒 Poori book padhne / download karne ke liye", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
+        Text("🔒 To read the full book / download the PDF", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
         Text("₹$price", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A))
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
