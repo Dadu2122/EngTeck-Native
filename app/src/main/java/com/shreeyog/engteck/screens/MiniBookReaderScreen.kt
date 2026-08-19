@@ -628,7 +628,7 @@ private fun MiniBookMcqCard(mcq: MiniBookMcq) {
     ) {
         Text(
             "Q${mcq.number}. ${mcq.question}",
-            fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A), lineHeight = 25.sp,
+            fontSize = 16.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A), lineHeight = 22.sp,
             textAlign = TextAlign.Justify,
             modifier = Modifier.fillMaxWidth()
         )
