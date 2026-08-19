@@ -26,6 +26,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.database.FirebaseDatabase
@@ -298,6 +301,77 @@ private fun savePdfToDownloads(context: android.content.Context, title: String, 
     }
 }
 
+// Manual justify — native TextAlign.Justify doesn't render reliably on all devices/OS
+// versions, so this measures each word itself and stretches inter-word gaps to fill the
+// full line width (except the last line, which stays left-aligned).
+@Composable
+private fun JustifiedText(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    fontWeight: FontWeight? = null,
+    lineSpacing: Int = 6
+) {
+    val words = remember(text) { text.split(" ").filter { it.isNotEmpty() } }
+    Layout(
+        modifier = modifier,
+        content = {
+            words.forEach { w ->
+                Text(w, color = color, fontSize = fontSize, fontWeight = fontWeight, maxLines = 1, softWrap = false)
+            }
+            Text(" ", color = color, fontSize = fontSize, fontWeight = fontWeight, maxLines = 1, softWrap = false)
+        }
+    ) { measurables, constraints ->
+        val maxWidth = constraints.maxWidth
+        val loose = Constraints()
+        val wordPlaceables = measurables.dropLast(1).map { it.measure(loose) }
+        val spaceWidth = measurables.last().measure(loose).width
+
+        data class Line(val items: MutableList<androidx.compose.ui.layout.Placeable>, var width: Int)
+        val lines = mutableListOf<Line>()
+        var current = Line(mutableListOf(), 0)
+        wordPlaceables.forEach { p ->
+            val newWidth = if (current.items.isEmpty()) p.width else current.width + spaceWidth + p.width
+            if (current.items.isNotEmpty() && newWidth > maxWidth) {
+                lines.add(current)
+                current = Line(mutableListOf(p), p.width)
+            } else {
+                current.items.add(p)
+                current.width = newWidth
+            }
+        }
+        if (current.items.isNotEmpty()) lines.add(current)
+
+        val lineHeight = (wordPlaceables.firstOrNull()?.height ?: 0) + lineSpacing
+        val totalHeight = if (lines.isEmpty()) 0 else lines.size * lineHeight
+
+        layout(maxWidth, totalHeight) {
+            lines.forEachIndexed { lineIndex, line ->
+                val isLastLine = lineIndex == lines.size - 1
+                val y = lineIndex * lineHeight
+                if (isLastLine || line.items.size <= 1) {
+                    var x = 0
+                    line.items.forEach { p ->
+                        p.placeRelative(x, y)
+                        x += p.width + spaceWidth
+                    }
+                } else {
+                    val wordsWidth = line.items.sumOf { it.width }
+                    val gapCount = line.items.size - 1
+                    val totalGap = maxWidth - wordsWidth
+                    val gap = if (totalGap > 0) totalGap / gapCount else spaceWidth
+                    var x = 0
+                    line.items.forEachIndexed { idx, p ->
+                        p.placeRelative(x, y)
+                        x += p.width + gap
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
     var loading by remember { mutableStateOf(true) }
@@ -399,12 +473,11 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                 Text(q.number, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                             Spacer(Modifier.width(10.dp))
-                            Text(
+                            JustifiedText(
                                 q.question,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1A1A1A),
-                                textAlign = TextAlign.Justify,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -445,19 +518,20 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                     }
                                     .padding(vertical = 12.dp, horizontal = 18.dp)
                             ) {
-                                Text(
+                                JustifiedText(
                                     if (showAnswers && isCorrectOption) "✓ $opt" else opt,
                                     fontSize = 14.sp,
-                                    color = if (showAnswers) textColor else textColor,
+                                    color = textColor,
                                     fontWeight = if (bgColor != Color.Transparent) FontWeight.Bold else FontWeight.Normal,
-                                    textAlign = TextAlign.Justify,
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
                             HorizontalDivider(color = Color(0xFFD9D3C4), thickness = 1.5.dp)
                         }
 
-                        if (showAnswers && q.correctAnswer.isNotEmpty()) {
+                        val revealed = showAnswers || userSelected != null
+
+                        if (revealed && q.correctAnswer.isNotEmpty()) {
                             Text(
                                 "Correct Answer: ${q.correctAnswer}",
                                 fontSize = 13.sp,
@@ -467,7 +541,7 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                             )
                         }
 
-                        if (showAnswers && q.explanation.isNotEmpty()) {
+                        if (revealed && q.explanation.isNotEmpty()) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -476,8 +550,13 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                     .padding(14.dp),
                                 verticalAlignment = Alignment.Top
                             ) {
-                                Text("💡", fontSize = 14.sp)
-                                Spacer(Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .padding(top = 6.dp)
+                                        .size(8.dp)
+                                        .background(Color(0xFF4CAF50), CircleShape)
+                                )
+                                Spacer(Modifier.width(10.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         "Explanation:",
@@ -486,16 +565,15 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                         fontWeight = FontWeight.Bold
                                     )
                                     Spacer(Modifier.height(4.dp))
-                                    Text(
+                                    JustifiedText(
                                         q.explanation,
                                         color = Color(0xFFF0E6C8),
                                         fontSize = 13.sp,
-                                        textAlign = TextAlign.Justify,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                 }
                             }
-                        } else if (!showAnswers) {
+                        } else if (!revealed) {
                             Spacer(Modifier.height(8.dp))
                         }
                     }
