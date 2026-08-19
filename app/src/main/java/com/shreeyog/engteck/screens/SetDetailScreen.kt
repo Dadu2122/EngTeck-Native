@@ -401,7 +401,7 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(setTitle, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text("$setTitle 🔴TEST-V2", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
 
         Row(
