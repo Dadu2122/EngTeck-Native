@@ -417,6 +417,7 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                             val isCorrectOption = optLetter == correctLetter
 
                             val bgColor = when {
+                                showAnswers && isCorrectOption -> Color(0xFFDCF5E0)
                                 showAnswers -> Color.Transparent
                                 userSelected == null -> Color.Transparent
                                 isSelected && isCorrectOption -> Color(0xFFDCF5E0)
@@ -425,6 +426,7 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                 else -> Color.Transparent
                             }
                             val textColor = when {
+                                showAnswers && isCorrectOption -> Color(0xFF1F7A3D)
                                 showAnswers -> Color(0xFF5B5F6B)
                                 userSelected == null -> Color(0xFF5B5F6B)
                                 isSelected && isCorrectOption -> Color(0xFF1F7A3D)
@@ -444,9 +446,9 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                     .padding(vertical = 12.dp, horizontal = 18.dp)
                             ) {
                                 Text(
-                                    opt,
+                                    if (showAnswers && isCorrectOption) "✓ $opt" else opt,
                                     fontSize = 14.sp,
-                                    color = if (showAnswers) Color(0xFF1A1A1A) else textColor,
+                                    color = if (showAnswers) textColor else textColor,
                                     fontWeight = if (bgColor != Color.Transparent) FontWeight.Bold else FontWeight.Normal,
                                     textAlign = TextAlign.Justify,
                                     modifier = Modifier.fillMaxWidth()
@@ -476,7 +478,7 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                             ) {
                                 Text("💡", fontSize = 14.sp)
                                 Spacer(Modifier.width(8.dp))
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         "Explanation:",
                                         color = Color(0xFFF0E6C8),
