@@ -1,6 +1,7 @@
 package com.shreeyog.engteck.screens
 
 import android.content.ContentValues
+import android.graphics.Canvas
 import android.graphics.Color as AColor
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
@@ -24,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.database.FirebaseDatabase
@@ -34,7 +36,8 @@ data class ParsedQuestion(
     val number: String,
     val question: String,
     val options: List<String>,
-    val correctAnswer: String
+    val correctAnswer: String,
+    val explanation: String = ""
 )
 
 private fun parseQuestions(raw: String): List<ParsedQuestion> {
@@ -47,15 +50,30 @@ private fun parseQuestions(raw: String): List<ParsedQuestion> {
         val question = numMatch.groupValues[2]
         val options = mutableListOf<String>()
         var correctAnswer = ""
-        for (i in 1 until lines.size) {
+        var explanation = ""
+
+        var i = 1
+        while (i < lines.size) {
             val line = lines[i]
-            if (line.startsWith("Correct Answer:")) {
-                correctAnswer = line.removePrefix("Correct Answer:").trim()
-            } else if (Regex("^[A-D]\\)").containsMatchIn(line)) {
-                options.add(line)
+            when {
+                line.startsWith("Correct Answer:") -> {
+                    correctAnswer = line.removePrefix("Correct Answer:").trim()
+                }
+                line.startsWith("Explanation:") -> {
+                    val sb = StringBuilder(line.removePrefix("Explanation:").trim())
+                    var j = i + 1
+                    while (j < lines.size) {
+                        sb.append(" ").append(lines[j])
+                        j++
+                    }
+                    explanation = sb.toString().trim()
+                    i = lines.size
+                }
+                Regex("^[A-D]\\)").containsMatchIn(line) -> options.add(line)
             }
+            i++
         }
-        ParsedQuestion(number, question, options, correctAnswer)
+        ParsedQuestion(number, question, options, correctAnswer, explanation)
     }
 }
 
@@ -74,6 +92,34 @@ private fun wrapText(text: String, paint: Paint, maxWidth: Float): List<String> 
     }
     if (current.isNotEmpty()) lines.add(current.toString())
     return lines
+}
+
+/** Draws one line justified (stretches spaces to fill maxWidth). Last line of a
+ *  paragraph should NOT be justified (standard typographic rule) — pass isLastLine=true. */
+private fun drawJustifiedLine(
+    canvas: Canvas,
+    line: String,
+    x: Float,
+    y: Float,
+    maxWidth: Float,
+    paint: Paint,
+    isLastLine: Boolean
+) {
+    val words = line.split(" ").filter { it.isNotEmpty() }
+    if (isLastLine || words.size <= 1) {
+        canvas.drawText(line, x, y, paint)
+        return
+    }
+    val textWidthNoSpaces = words.sumOf { paint.measureText(it).toDouble() }.toFloat()
+    val gapCount = words.size - 1
+    val totalGapWidth = maxWidth - textWidthNoSpaces
+    val gapWidth = if (totalGapWidth > 0) totalGapWidth / gapCount else paint.measureText(" ")
+    var cx = x
+    words.forEachIndexed { idx, word ->
+        canvas.drawText(word, cx, y, paint)
+        cx += paint.measureText(word)
+        if (idx < words.size - 1) cx += gapWidth
+    }
 }
 
 private fun buildPdfDocument(title: String, questions: List<ParsedQuestion>): PdfDocument {
@@ -101,6 +147,12 @@ private fun buildPdfDocument(title: String, questions: List<ParsedQuestion>): Pd
     val qPaint = Paint().apply { color = AColor.rgb(0x1A, 0x1A, 0x1A); textSize = 13f; isFakeBoldText = true }
     val optGreenPaint = Paint().apply { color = AColor.rgb(0x1F, 0x7A, 0x3D); textSize = 12f; isFakeBoldText = true }
     val optRedPaint = Paint().apply { color = AColor.rgb(0xC0, 0x39, 0x2B); textSize = 12f }
+    val correctAnswerPaint = Paint().apply { color = AColor.rgb(0x1F, 0x7A, 0x3D); textSize = 12.5f; isFakeBoldText = true }
+
+    // Explanation card — matches the in-app navy card with cream text
+    val explBgPaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
+    val explHeaderPaint = Paint().apply { color = AColor.rgb(0xF0, 0xE6, 0xC8); textSize = 12.5f; isFakeBoldText = true }
+    val explBodyPaint = Paint().apply { color = AColor.rgb(0xF0, 0xE6, 0xC8); textSize = 11.5f }
 
     var pageNumber = 1
     var page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
@@ -122,12 +174,24 @@ private fun buildPdfDocument(title: String, questions: List<ParsedQuestion>): Pd
     val marginBottom = 790f
     val textStartX = leftMargin + 34f
     val textWidth = contentWidth - 34f
+    val explInnerPad = 10f
+    val explTextWidth = contentWidth - (explInnerPad * 2f)
 
     questions.forEachIndexed { index, q ->
         val qLines = wrapText("${q.number}. ${q.question}", qPaint, textWidth)
+        val optLinesList = q.options.map { opt ->
+            val optLetter = opt.substringBefore(")").trim()
+            val isCorrect = optLetter == q.correctAnswer.trim()
+            val prefix = if (isCorrect) "✓ " else "✗ "
+            wrapText(prefix + opt, optRedPaint, textWidth - 10f)
+        }
+        val explLines = if (q.explanation.isNotEmpty()) wrapText(q.explanation, explBodyPaint, explTextWidth) else emptyList()
+
         var blockHeight = 20f + (qLines.size * 16f)
-        q.options.forEach { opt ->
-            blockHeight += wrapText(opt, optRedPaint, textWidth - 10f).size * 15f
+        optLinesList.forEach { blockHeight += it.size * 15f }
+        if (q.correctAnswer.isNotEmpty()) blockHeight += 20f
+        if (explLines.isNotEmpty()) {
+            blockHeight += 8f + 18f + (explLines.size * 14f) + 12f
         }
         blockHeight += 12f
 
@@ -141,8 +205,8 @@ private fun buildPdfDocument(title: String, questions: List<ParsedQuestion>): Pd
         }
 
         val cardTop = y
-        val bandPaintToUse = if (index % 2 == 0) cardBgEven else cardBgOdd
-        canvas.drawRect(0f, cardTop, pageWidth.toFloat(), cardTop + blockHeight, bandPaintToUse)
+        val bgPaintToUse = if (index % 2 == 0) cardBgEven else cardBgOdd
+        canvas.drawRect(0f, cardTop, pageWidth.toFloat(), cardTop + blockHeight, bgPaintToUse)
 
         val circleCy = cardTop + 22f
         canvas.drawCircle(leftMargin + 11f, circleCy, 11f, circlePaint)
@@ -150,26 +214,48 @@ private fun buildPdfDocument(title: String, questions: List<ParsedQuestion>): Pd
 
         var lineY = cardTop + 20f
         qLines.forEachIndexed { idx, line ->
-            canvas.drawText(line, textStartX, lineY, qPaint)
+            drawJustifiedLine(canvas, line, textStartX, lineY, textWidth, qPaint, idx == qLines.size - 1)
             lineY += 16f
         }
         lineY += 4f
 
         val correctLetter = q.correctAnswer.trim()
-        q.options.forEach { opt ->
+        q.options.forEachIndexed { oi, opt ->
             val optLetter = opt.substringBefore(")").trim()
             val isCorrect = optLetter == correctLetter
             val paintToUse = if (isCorrect) optGreenPaint else optRedPaint
-            val prefix = if (isCorrect) "✓ " else "✗ "
-            val optLines = wrapText(prefix + opt, paintToUse, textWidth - 10f)
-            optLines.forEach { line ->
-                canvas.drawText(line, textStartX + 10f, lineY, paintToUse)
+            val optLines = optLinesList[oi]
+            optLines.forEachIndexed { li, line ->
+                drawJustifiedLine(canvas, line, textStartX + 10f, lineY, textWidth - 10f, paintToUse, li == optLines.size - 1)
                 lineY += 15f
             }
         }
 
-        canvas.drawLine(0f, cardTop + blockHeight, pageWidth.toFloat(), cardTop + blockHeight, dividerPaint)
+        if (q.correctAnswer.isNotEmpty()) {
+            lineY += 4f
+            canvas.drawText("Correct Answer: ${q.correctAnswer}", textStartX, lineY, correctAnswerPaint)
+            lineY += 16f
+        }
 
+        if (explLines.isNotEmpty()) {
+            lineY += 4f
+            val boxTop = lineY
+            val boxHeight = 18f + (explLines.size * 14f) + 10f
+            canvas.drawRect(leftMargin, boxTop, pageWidth - rightMargin, boxTop + boxHeight, explBgPaint)
+            var ey = boxTop + 16f
+            canvas.drawText("Explanation:", leftMargin + explInnerPad, ey, explHeaderPaint)
+            ey += 16f
+            explLines.forEachIndexed { idx, line ->
+                drawJustifiedLine(
+                    canvas, line, leftMargin + explInnerPad, ey,
+                    explTextWidth, explBodyPaint, idx == explLines.size - 1
+                )
+                ey += 14f
+            }
+            lineY = boxTop + boxHeight
+        }
+
+        canvas.drawLine(0f, cardTop + blockHeight, pageWidth.toFloat(), cardTop + blockHeight, dividerPaint)
         y = cardTop + blockHeight
     }
     drawPageBorder()
@@ -313,7 +399,14 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                 Text(q.number, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                             Spacer(Modifier.width(10.dp))
-                            Text(q.question, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
+                            Text(
+                                q.question,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1A1A1A),
+                                textAlign = TextAlign.Justify,
+                                modifier = Modifier.weight(1f)
+                            )
                         }
 
                         val userSelected = selectedAnswers[q.number]
@@ -339,8 +432,6 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                 isCorrectOption -> Color(0xFF1F7A3D)
                                 else -> Color(0xFF5B5F6B)
                             }
-                            // Always solid white when idle — no cream tint — so the card reads
-                            // as one clean solid block instead of a shaded list.
                             val boxBg = if (bgColor == Color.Transparent) Color.White else bgColor
 
                             Box(
@@ -356,7 +447,9 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                     opt,
                                     fontSize = 14.sp,
                                     color = if (showAnswers) Color(0xFF1A1A1A) else textColor,
-                                    fontWeight = if (bgColor != Color.Transparent) FontWeight.Bold else FontWeight.Normal
+                                    fontWeight = if (bgColor != Color.Transparent) FontWeight.Bold else FontWeight.Normal,
+                                    textAlign = TextAlign.Justify,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                             HorizontalDivider(color = Color(0xFFD9D3C4), thickness = 1.5.dp)
@@ -368,9 +461,39 @@ fun SetDetailScreen(catKey: String, setKey: String, setTitle: String) {
                                 fontSize = 13.sp,
                                 color = Color(0xFF1F7A3D),
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 12.dp)
+                                modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = if (q.explanation.isNotEmpty()) 4.dp else 12.dp)
                             )
-                        } else {
+                        }
+
+                        if (showAnswers && q.explanation.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 14.dp)
+                                    .background(Color(0xFF12203D), RoundedCornerShape(12.dp))
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Text("💡", fontSize = 14.sp)
+                                Spacer(Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        "Explanation:",
+                                        color = Color(0xFFF0E6C8),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        q.explanation,
+                                        color = Color(0xFFF0E6C8),
+                                        fontSize = 13.sp,
+                                        textAlign = TextAlign.Justify,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        } else if (!showAnswers) {
                             Spacer(Modifier.height(8.dp))
                         }
                     }
