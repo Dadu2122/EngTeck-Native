@@ -673,7 +673,7 @@ private fun MiniBookMcqCard(mcq: MiniBookMcq) {
                         .background(Color(0xFF4CAF50), CircleShape)
                 )
                 Spacer(Modifier.width(10.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text("Explanation:", fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF5E6B8))
                     Spacer(Modifier.height(4.dp))
                     Text(
