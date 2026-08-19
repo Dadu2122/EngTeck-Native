@@ -19,6 +19,7 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -34,6 +35,7 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -50,33 +52,109 @@ import java.io.FileOutputStream
 
 private const val MINIBOOK_FREE_SECTIONS = 5
 
+// A pasted-text block is treated as an MCQ card if its first line looks like "Q1. ..." or "1. ...".
+// Declared up top so both the Composable card and the PDF export can share the same parser.
+private data class MiniBookMcq(
+    val number: String,
+    val question: String,
+    val options: List<String>,
+    val correctLetter: String?,
+    val explanation: String?
+)
+private fun parseMiniBookMcqBlock(block: String): MiniBookMcq? {
+    val lines = block.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+    if (lines.isEmpty()) return null
+    val m = Regex("^Q?(\\d+)[.)]\\s*(.*)", RegexOption.IGNORE_CASE).find(lines[0]) ?: return null
+    val number = m.groupValues[1]
+    val question = m.groupValues[2]
+
+    var correctLetter: String? = null
+    var explanation: String? = null
+    val options = mutableListOf<String>()
+    lines.drop(1).forEach { line ->
+        val ansMatch = Regex("^Correct Answer:\\s*\\(?([A-Da-d])[.)]?", RegexOption.IGNORE_CASE).find(line)
+        val expMatch = Regex("^Explanation:\\s*(.*)", RegexOption.IGNORE_CASE).find(line)
+        when {
+            ansMatch != null -> correctLetter = ansMatch.groupValues[1].uppercase()
+            expMatch != null -> explanation = expMatch.groupValues[1]
+            else -> options.add(line.replace(Regex("^\\(?[A-Da-d][.)]\\s*"), ""))
+        }
+    }
+    if (options.isEmpty()) return null
+    return MiniBookMcq(number, question, options, correctLetter, explanation)
+}
+
+private fun pdfWrap(text: String, paint: android.graphics.Paint, maxWidth: Float): List<String> {
+    if (text.isEmpty()) return listOf("")
+    val words = text.split(" ")
+    val lines = mutableListOf<String>()
+    var cur = StringBuilder()
+    for (w in words) {
+        val test = if (cur.isEmpty()) w else "$cur $w"
+        if (paint.measureText(test) > maxWidth && cur.isNotEmpty()) { lines.add(cur.toString()); cur = StringBuilder(w) }
+        else cur = StringBuilder(test)
+    }
+    if (cur.isNotEmpty()) lines.add(cur.toString())
+    return lines
+}
+
+// Justified line drawing — stretches inter-word spaces to fill maxWidth. Last line of a
+// paragraph is left-aligned (standard typographic rule), matching the in-app Compose behavior.
+private fun pdfDrawJustified(
+    canvas: android.graphics.Canvas,
+    line: String,
+    x: Float,
+    y: Float,
+    maxWidth: Float,
+    paint: android.graphics.Paint,
+    isLastLine: Boolean
+) {
+    val words = line.split(" ").filter { it.isNotEmpty() }
+    if (isLastLine || words.size <= 1) {
+        canvas.drawText(line, x, y, paint)
+        return
+    }
+    val textWidthNoSpaces = words.sumOf { paint.measureText(it).toDouble() }.toFloat()
+    val gapCount = words.size - 1
+    val totalGapWidth = maxWidth - textWidthNoSpaces
+    val gapWidth = if (totalGapWidth > 0) totalGapWidth / gapCount else paint.measureText(" ")
+    var cx = x
+    words.forEachIndexed { idx, word ->
+        canvas.drawText(word, cx, y, paint)
+        cx += paint.measureText(word)
+        if (idx < words.size - 1) cx += gapWidth
+    }
+}
+
+// Renders pasted-text book content to PDF: headings, plain paragraphs (justified), and MCQ
+// cards (question + colored options + navy explanation card) — matching the in-app card design.
 private fun saveMiniBookTextPdf(context: android.content.Context, title: String, body: String): String? {
     return try {
         val pageWidth = 595
         val pageHeight = 842
+        val margin = 30f
+        val contentWidth = pageWidth - margin * 2
         val document = PdfDocument()
+
         val titlePaint = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; textSize = 16f; isFakeBoldText = true }
         val bandPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x12, 0x20, 0x3D) }
         val bodyPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x1A, 0x1A, 0x1A); textSize = 12f }
-        val margin = 30f
-        val contentWidth = pageWidth - margin * 2
-
-        fun wrap(text: String, paint: android.graphics.Paint, maxWidth: Float): List<String> {
-            if (text.isEmpty()) return listOf("")
-            val words = text.split(" ")
-            val lines = mutableListOf<String>()
-            var cur = StringBuilder()
-            for (w in words) {
-                val test = if (cur.isEmpty()) w else "$cur $w"
-                if (paint.measureText(test) > maxWidth && cur.isNotEmpty()) { lines.add(cur.toString()); cur = StringBuilder(w) }
-                else cur = StringBuilder(test)
-            }
-            if (cur.isNotEmpty()) lines.add(cur.toString())
-            return lines
+        val headingPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x7A, 0x2E, 0x3D); textSize = 15f; isFakeBoldText = true }
+        val qPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x1A, 0x1A, 0x1A); textSize = 13f; isFakeBoldText = true }
+        val optCorrectPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x1F, 0x7A, 0x3D); textSize = 12f; isFakeBoldText = true }
+        val optNormalPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x5B, 0x5F, 0x6B); textSize = 12f }
+        val optCorrectBg = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0xDC, 0xF5, 0xE0) }
+        val optNormalBg = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0xF2, 0xF2, 0xF2) }
+        val whiteBg = android.graphics.Paint().apply { color = android.graphics.Color.WHITE }
+        val cardBorderPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(0xD4, 0xA0, 0x17)
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = 1.5f
         }
-
-        val allLines = mutableListOf<String>()
-        body.split("\n").forEach { p -> allLines.addAll(wrap(p, bodyPaint, contentWidth)) }
+        val explBgPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x12, 0x20, 0x3D) }
+        val explHeaderPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0xF0, 0xE6, 0xC8); textSize = 12.5f; isFakeBoldText = true }
+        val explBodyPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0xF0, 0xE6, 0xC8); textSize = 11.5f }
+        val dotPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x4C, 0xAF, 0x50) }
 
         var pageNumber = 1
         var page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
@@ -84,17 +162,100 @@ private fun saveMiniBookTextPdf(context: android.content.Context, title: String,
         canvas.drawRect(0f, 0f, pageWidth.toFloat(), 50f, bandPaint)
         canvas.drawText(title, margin, 32f, titlePaint)
         var y = 74f
-        for (line in allLines) {
-            if (y > 800f) {
+        val marginBottom = 800f
+
+        fun newPageIfNeeded(needed: Float) {
+            if (y + needed > marginBottom) {
                 document.finishPage(page)
                 pageNumber++
                 page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
                 canvas = page.canvas
-                y = 40f
+                y = 30f
             }
-            canvas.drawText(line, margin, y, bodyPaint)
-            y += 16f
         }
+
+        val blocks = body.split("\n\n").map { it.trim() }.filter { it.isNotEmpty() }
+
+        blocks.forEach { block ->
+            val mcq = parseMiniBookMcqBlock(block)
+            when {
+                mcq != null -> {
+                    val qLines = pdfWrap("Q${mcq.number}. ${mcq.question}", qPaint, contentWidth - 24f)
+                    val optWraps = mcq.options.mapIndexed { idx, opt ->
+                        val letter = ('A' + idx).toString()
+                        val isCorrect = mcq.correctLetter != null && letter == mcq.correctLetter
+                        val prefix = if (isCorrect) "\u2713 " else ""
+                        pdfWrap(prefix + opt, if (isCorrect) optCorrectPaint else optNormalPaint, contentWidth - 64f)
+                    }
+                    val explLines = if (!mcq.explanation.isNullOrBlank())
+                        pdfWrap(mcq.explanation, explBodyPaint, contentWidth - 64f) else emptyList()
+
+                    var cardHeight = 20f + qLines.size * 18f + 10f
+                    optWraps.forEach { cardHeight += (it.size * 15f + 10f) + 4f }
+                    if (explLines.isNotEmpty()) cardHeight += 8f + 16f + explLines.size * 14f + 14f
+                    cardHeight += 16f
+
+                    newPageIfNeeded(cardHeight)
+                    val cardTop = y
+                    canvas.drawRect(margin, cardTop, pageWidth - margin, cardTop + cardHeight, whiteBg)
+                    canvas.drawRect(margin, cardTop, pageWidth - margin, cardTop + cardHeight, cardBorderPaint)
+
+                    var ly = cardTop + 22f
+                    qLines.forEachIndexed { idx, line ->
+                        pdfDrawJustified(canvas, line, margin + 12f, ly, contentWidth - 24f, qPaint, idx == qLines.size - 1)
+                        ly += 18f
+                    }
+                    ly += 8f
+
+                    optWraps.forEachIndexed { oi, optLines ->
+                        val letter = ('A' + oi).toString()
+                        val isCorrect = mcq.correctLetter != null && letter == mcq.correctLetter
+                        val boxHeight = optLines.size * 15f + 10f
+                        val bg = if (isCorrect) optCorrectBg else optNormalBg
+                        canvas.drawRect(margin + 12f, ly - 11f, pageWidth - margin - 12f, ly - 11f + boxHeight, bg)
+                        val p = if (isCorrect) optCorrectPaint else optNormalPaint
+                        var oy = ly
+                        optLines.forEachIndexed { li, line ->
+                            pdfDrawJustified(canvas, line, margin + 20f, oy, contentWidth - 64f, p, li == optLines.size - 1)
+                            oy += 15f
+                        }
+                        ly += boxHeight + 4f
+                    }
+
+                    if (explLines.isNotEmpty()) {
+                        ly += 4f
+                        val boxTop = ly
+                        val boxHeight = 16f + explLines.size * 14f + 12f
+                        canvas.drawRect(margin + 12f, boxTop, pageWidth - margin - 12f, boxTop + boxHeight, explBgPaint)
+                        canvas.drawCircle(margin + 22f, boxTop + 15f, 3f, dotPaint)
+                        canvas.drawText("Explanation:", margin + 32f, boxTop + 18f, explHeaderPaint)
+                        var ey = boxTop + 34f
+                        explLines.forEachIndexed { idx, line ->
+                            pdfDrawJustified(canvas, line, margin + 20f, ey, contentWidth - 64f, explBodyPaint, idx == explLines.size - 1)
+                            ey += 14f
+                        }
+                    }
+                    y = cardTop + cardHeight + 10f
+                }
+                block.startsWith("#") -> {
+                    val text = block.removePrefix("#").trim()
+                    val hLines = pdfWrap(text, headingPaint, contentWidth)
+                    newPageIfNeeded(hLines.size * 18f + 10f)
+                    hLines.forEach { line -> canvas.drawText(line, margin, y + 14f, headingPaint); y += 18f }
+                    y += 8f
+                }
+                else -> {
+                    val pLines = pdfWrap(block, bodyPaint, contentWidth)
+                    newPageIfNeeded(pLines.size * 16f + 8f)
+                    pLines.forEachIndexed { idx, line ->
+                        pdfDrawJustified(canvas, line, margin, y + 12f, contentWidth, bodyPaint, idx == pLines.size - 1)
+                        y += 16f
+                    }
+                    y += 8f
+                }
+            }
+        }
+
         document.finishPage(page)
 
         val safeTitle = title.replace(Regex("[^a-zA-Z0-9]"), "_")
@@ -409,7 +570,8 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
                         else -> {
                             Text(
                                 block, fontSize = 14.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp,
-                                modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 10.dp)
+                                textAlign = TextAlign.Justify,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 10.dp)
                             )
                         }
                     }
@@ -455,40 +617,6 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
     }
 }
 
-// A pasted-text block is treated as an MCQ card if its first line looks like "Q1. ..." or "1. ...".
-// Every other non-blank line becomes a read-only option row. If the admin included a
-// "Correct Answer: X" and/or "Explanation: ..." line, the correct option is highlighted and the
-// explanation is shown in a solid banner below the options.
-private data class MiniBookMcq(
-    val number: String,
-    val question: String,
-    val options: List<String>,
-    val correctLetter: String?,
-    val explanation: String?
-)
-private fun parseMiniBookMcqBlock(block: String): MiniBookMcq? {
-    val lines = block.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-    if (lines.isEmpty()) return null
-    val m = Regex("^Q?(\\d+)[.)]\\s*(.*)", RegexOption.IGNORE_CASE).find(lines[0]) ?: return null
-    val number = m.groupValues[1]
-    val question = m.groupValues[2]
-
-    var correctLetter: String? = null
-    var explanation: String? = null
-    val options = mutableListOf<String>()
-    lines.drop(1).forEach { line ->
-        val ansMatch = Regex("^Correct Answer:\\s*\\(?([A-Da-d])[.)]?", RegexOption.IGNORE_CASE).find(line)
-        val expMatch = Regex("^Explanation:\\s*(.*)", RegexOption.IGNORE_CASE).find(line)
-        when {
-            ansMatch != null -> correctLetter = ansMatch.groupValues[1].uppercase()
-            expMatch != null -> explanation = expMatch.groupValues[1]
-            else -> options.add(line.replace(Regex("^\\(?[A-Da-d][.)]\\s*"), ""))
-        }
-    }
-    if (options.isEmpty()) return null
-    return MiniBookMcq(number, question, options, correctLetter, explanation)
-}
-
 @Composable
 private fun MiniBookMcqCard(mcq: MiniBookMcq) {
     Column(
@@ -500,7 +628,9 @@ private fun MiniBookMcqCard(mcq: MiniBookMcq) {
     ) {
         Text(
             "Q${mcq.number}. ${mcq.question}",
-            fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A), lineHeight = 25.sp
+            fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A), lineHeight = 25.sp,
+            textAlign = TextAlign.Justify,
+            modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(14.dp))
         mcq.options.forEachIndexed { idx, opt ->
@@ -521,22 +651,38 @@ private fun MiniBookMcqCard(mcq: MiniBookMcq) {
                     if (isCorrect) "✓ $opt" else opt,
                     fontSize = 15.sp,
                     color = if (isCorrect) Color(0xFF1F7A3D) else Color(0xFF5B5F6B),
-                    fontWeight = if (isCorrect) FontWeight.Bold else FontWeight.Normal
+                    fontWeight = if (isCorrect) FontWeight.Bold else FontWeight.Normal,
+                    textAlign = TextAlign.Justify,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }
         if (!mcq.explanation.isNullOrBlank()) {
             Spacer(Modifier.height(4.dp))
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0xFF12203D), RoundedCornerShape(10.dp))
-                    .padding(vertical = 14.dp, horizontal = 16.dp)
+                    .padding(vertical = 14.dp, horizontal = 16.dp),
+                verticalAlignment = Alignment.Top
             ) {
-                Text(
-                    "💡 Explanation: ${mcq.explanation}",
-                    fontSize = 13.5.sp, color = Color(0xFFF5E6B8), lineHeight = 20.sp
+                Box(
+                    modifier = Modifier
+                        .padding(top = 6.dp)
+                        .size(8.dp)
+                        .background(Color(0xFF4CAF50), CircleShape)
                 )
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("Explanation:", fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF5E6B8))
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        mcq.explanation,
+                        fontSize = 13.5.sp, color = Color(0xFFF5E6B8), lineHeight = 20.sp,
+                        textAlign = TextAlign.Justify,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
     }
