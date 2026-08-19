@@ -33,6 +33,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -568,9 +571,8 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
                             )
                         }
                         else -> {
-                            Text(
-                                block, fontSize = 14.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp,
-                                textAlign = TextAlign.Justify,
+                            JustifiedText(
+                                block, fontSize = 14.sp, color = Color(0xFF1A1A1A),
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 10.dp)
                             )
                         }
@@ -617,6 +619,78 @@ fun MiniBookReaderScreen(bookKey: String, title: String, onBack: () -> Unit) {
     }
 }
 
+// Manual justify — native TextAlign.Justify doesn't render reliably on all devices/OS
+// versions, so this measures each word itself and stretches the inter-word gaps to fill
+// the full line width (except the last line of the paragraph, which stays left-aligned —
+// standard typographic rule). Behaves like a browser's text-align: justify.
+@Composable
+private fun JustifiedText(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    fontWeight: FontWeight? = null,
+    lineSpacing: Int = 6
+) {
+    val words = remember(text) { text.split(" ").filter { it.isNotEmpty() } }
+    Layout(
+        modifier = modifier,
+        content = {
+            words.forEach { w ->
+                Text(w, color = color, fontSize = fontSize, fontWeight = fontWeight, maxLines = 1, softWrap = false)
+            }
+            Text(" ", color = color, fontSize = fontSize, fontWeight = fontWeight, maxLines = 1, softWrap = false)
+        }
+    ) { measurables, constraints ->
+        val maxWidth = constraints.maxWidth
+        val loose = Constraints()
+        val wordPlaceables = measurables.dropLast(1).map { it.measure(loose) }
+        val spaceWidth = measurables.last().measure(loose).width
+
+        data class Line(val items: MutableList<androidx.compose.ui.layout.Placeable>, var width: Int)
+        val lines = mutableListOf<Line>()
+        var current = Line(mutableListOf(), 0)
+        wordPlaceables.forEach { p ->
+            val newWidth = if (current.items.isEmpty()) p.width else current.width + spaceWidth + p.width
+            if (current.items.isNotEmpty() && newWidth > maxWidth) {
+                lines.add(current)
+                current = Line(mutableListOf(p), p.width)
+            } else {
+                current.items.add(p)
+                current.width = newWidth
+            }
+        }
+        if (current.items.isNotEmpty()) lines.add(current)
+
+        val lineHeight = (wordPlaceables.firstOrNull()?.height ?: 0) + lineSpacing
+        val totalHeight = if (lines.isEmpty()) 0 else lines.size * lineHeight
+
+        layout(maxWidth, totalHeight) {
+            lines.forEachIndexed { lineIndex, line ->
+                val isLastLine = lineIndex == lines.size - 1
+                val y = lineIndex * lineHeight
+                if (isLastLine || line.items.size <= 1) {
+                    var x = 0
+                    line.items.forEach { p ->
+                        p.placeRelative(x, y)
+                        x += p.width + spaceWidth
+                    }
+                } else {
+                    val wordsWidth = line.items.sumOf { it.width }
+                    val gapCount = line.items.size - 1
+                    val totalGap = maxWidth - wordsWidth
+                    val gap = if (totalGap > 0) totalGap / gapCount else spaceWidth
+                    var x = 0
+                    line.items.forEachIndexed { idx, p ->
+                        p.placeRelative(x, y)
+                        x += p.width + gap
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun MiniBookMcqCard(mcq: MiniBookMcq) {
     Column(
@@ -626,10 +700,9 @@ private fun MiniBookMcqCard(mcq: MiniBookMcq) {
             .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(0.dp))
             .padding(vertical = 18.dp, horizontal = 20.dp)
     ) {
-        Text(
+        JustifiedText(
             "Q${mcq.number}. ${mcq.question}",
-            fontSize = 16.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A), lineHeight = 22.sp,
-            textAlign = TextAlign.Justify,
+            fontSize = 16.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A),
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(14.dp))
@@ -647,12 +720,11 @@ private fun MiniBookMcqCard(mcq: MiniBookMcq) {
                     )
                     .padding(vertical = 16.dp, horizontal = 18.dp)
             ) {
-                Text(
+                JustifiedText(
                     if (isCorrect) "✓ $opt" else opt,
                     fontSize = 15.sp,
                     color = if (isCorrect) Color(0xFF1F7A3D) else Color(0xFF5B5F6B),
                     fontWeight = if (isCorrect) FontWeight.Bold else FontWeight.Normal,
-                    textAlign = TextAlign.Justify,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -676,10 +748,9 @@ private fun MiniBookMcqCard(mcq: MiniBookMcq) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Explanation:", fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF5E6B8))
                     Spacer(Modifier.height(4.dp))
-                    Text(
+                    JustifiedText(
                         mcq.explanation,
-                        fontSize = 13.5.sp, color = Color(0xFFF5E6B8), lineHeight = 20.sp,
-                        textAlign = TextAlign.Justify,
+                        fontSize = 13.5.sp, color = Color(0xFFF5E6B8),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
