@@ -326,9 +326,10 @@ fun AdminLiveClassCard() {
         ) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(listOf(
-                    AnnotationTool.POINTER to "👆", AnnotationTool.MARKER to "✏️", AnnotationTool.HIGHLIGHTER to "🖍️",
+                    AnnotationTool.POINTER to "👆", AnnotationTool.MOVE to "✋", AnnotationTool.MARKER to "✏️", AnnotationTool.HIGHLIGHTER to "🖍️",
                     AnnotationTool.ERASER to "🧹", AnnotationTool.RECTANGLE to "▭", AnnotationTool.CIRCLE to "○",
                     AnnotationTool.LINE to "➖", AnnotationTool.ARROW to "➡️"
+                )) { (t, icon) ->
                 )) { (t, icon) ->
                     val active = tool == t
                     Box(
