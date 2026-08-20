@@ -73,18 +73,16 @@ object AgoraLiveAudio {
 
     fun join(context: Context, channel: String, uid: Int) {
         scope.launch {
-            val token = kotlinx.coroutines.withTimeoutOrNull(12000) { fetchToken(channel, uid) }
-            if (token == null) {
-                onError?.invoke("TOKEN_FETCH_FAILED")
-                return@launch
-            }
+            // TEMP TEST: try joining with an EMPTY token first — if your Agora
+            // project doesn't have App Certificate enabled (same as the WebView
+            // site, which joins without asking for a token), this alone should connect.
             val eng = ensureEngine(context)
             val options = ChannelMediaOptions()
             options.channelProfile = Constants.CHANNEL_PROFILE_LIVE_BROADCASTING
             options.clientRoleType = Constants.CLIENT_ROLE_BROADCASTER
             options.publishMicrophoneTrack = true
             options.autoSubscribeAudio = true
-            eng.joinChannel(token, channel, uid, options)
+            eng.joinChannel("", channel, uid, options)
         }
     }
 
@@ -96,4 +94,3 @@ object AgoraLiveAudio {
         engine?.leaveChannel()
     }
 }
-
