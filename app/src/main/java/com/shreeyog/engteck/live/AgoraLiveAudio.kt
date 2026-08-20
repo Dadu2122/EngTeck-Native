@@ -96,6 +96,14 @@ object AgoraLiveAudio {
 
             try {
                 val eng = ensureEngine(context)
+
+                // Error -17 (ERR_JOIN_CHANNEL_REJECTED) means the engine thinks it's
+                // already joined/joining from a previous attempt. Force-leave first
+                // so every fresh "Start Live Class" / "Join Live Class" tap always
+                // starts from a clean state.
+                eng.leaveChannel()
+                kotlinx.coroutines.delay(300)
+
                 val options = ChannelMediaOptions()
                 options.channelProfile = Constants.CHANNEL_PROFILE_LIVE_BROADCASTING
                 options.clientRoleType = if (role == "audience") Constants.CLIENT_ROLE_AUDIENCE else Constants.CLIENT_ROLE_BROADCASTER
