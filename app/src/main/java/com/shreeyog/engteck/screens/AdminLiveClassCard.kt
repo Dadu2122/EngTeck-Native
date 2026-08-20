@@ -12,6 +12,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -227,7 +229,7 @@ fun AdminLiveClassCard() {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 460.dp)
+                .height(460.dp)
                 .background(Color(0xFFFFFDF7))
                 .border(3.dp, LIVE_GOLD)
                 .onSizeChanged { boardSizePx = it }
@@ -270,7 +272,12 @@ fun AdminLiveClassCard() {
                         }
                     }
                     BoardMode.PASTE_TEXT -> {
-                        Box(Modifier.fillMaxSize().padding(20.dp)) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                                .padding(20.dp)
+                        ) {
                             Text(pastedText.ifBlank { "Paste text below to show it here." }, fontSize = 15.sp, color = Color(0xFF1A1A1A))
                         }
                     }
