@@ -311,17 +311,7 @@ fun AdminLiveClassCard() {
                 modifier = Modifier.fillMaxWidth().height(42.dp)
             ) { Text("💾 Save to Board", color = Color(0xFF12203D), fontWeight = FontWeight.Bold) }
         }
-            )
-            Spacer(Modifier.height(8.dp))
-            Button(
-                onClick = { pastedText = pastedTextDraft },
-                colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().height(42.dp)
-            ) { Text("💾 Save to Board", color = Color(0xFF12203D), fontWeight = FontWeight.Bold) }
-        }
-            )
-        }
+
         if (boardMode == BoardMode.PDF) {
             Spacer(Modifier.height(10.dp))
             Button(
@@ -348,7 +338,6 @@ fun AdminLiveClassCard() {
                     AnnotationTool.POINTER to "👆", AnnotationTool.MOVE to "✋", AnnotationTool.MARKER to "✏️", AnnotationTool.HIGHLIGHTER to "🖍️",
                     AnnotationTool.ERASER to "🧹", AnnotationTool.RECTANGLE to "▭", AnnotationTool.CIRCLE to "○",
                     AnnotationTool.LINE to "➖", AnnotationTool.ARROW to "➡️"
-                )) { (t, icon) ->
                 )) { (t, icon) ->
                     val active = tool == t
                     Box(
