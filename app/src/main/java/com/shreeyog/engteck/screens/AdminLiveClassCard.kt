@@ -8,9 +8,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.calculatePan
-import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -25,8 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -222,10 +217,9 @@ fun AdminLiveClassCard() {
             }
         }
 
-        // Big board — two-finger pinch/pan on the outer box (Initial pass, only
-        // reacts to 2+ pointers so single-finger tool touches pass through untouched).
-        // Pan is clamped to the zoomed content's edges so it always stays smooth
-        // and the board never scrolls off past its own boundary.
+        // Big board — no separate gesture layer on this Box anymore; zoom/pan and
+        // tool touches are both handled inside AnnotationCanvas by ONE detector,
+        // so there is nothing left for tool touches to compete with.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -233,25 +227,6 @@ fun AdminLiveClassCard() {
                 .background(Color(0xFFFFFDF7))
                 .border(3.dp, LIVE_GOLD)
                 .onSizeChanged { boardSizePx = it }
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        do {
-                            val event = awaitPointerEvent(pass = PointerEventPass.Initial)
-                            if (event.changes.size >= 2) {
-                                val zoomChange = event.calculateZoom()
-                                val panChange = event.calculatePan()
-                                zoomScale = (zoomScale * zoomChange).coerceIn(1f, 4f)
-
-                                val maxOffsetX = (boardSizePx.width * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
-                                val maxOffsetY = (boardSizePx.height * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
-                                zoomOffsetX = (zoomOffsetX + panChange.x).coerceIn(-maxOffsetX, maxOffsetX)
-                                zoomOffsetY = (zoomOffsetY + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
-
-                                event.changes.forEach { it.consume() }
-                            }
-                        } while (event.changes.any { it.pressed })
-                    }
-                }
         ) {
             Box(
                 modifier = Modifier
@@ -291,7 +266,14 @@ fun AdminLiveClassCard() {
                     strokes = strokes, redoStack = redoStack,
                     swipeEnabled = boardMode == BoardMode.PDF,
                     onSwipeLeft = { if (currentPage < pageCount - 1) goToPage(currentPage + 1) },
-                    onSwipeRight = { if (currentPage > 0) goToPage(currentPage - 1) }
+                    onSwipeRight = { if (currentPage > 0) goToPage(currentPage - 1) },
+                    onZoomPan = { zoomChange, panChange ->
+                        zoomScale = (zoomScale * zoomChange).coerceIn(1f, 4f)
+                        val maxOffsetX = (boardSizePx.width * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
+                        val maxOffsetY = (boardSizePx.height * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
+                        zoomOffsetX = (zoomOffsetX + panChange.x).coerceIn(-maxOffsetX, maxOffsetX)
+                        zoomOffsetY = (zoomOffsetY + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
+                    }
                 )
             }
         }
