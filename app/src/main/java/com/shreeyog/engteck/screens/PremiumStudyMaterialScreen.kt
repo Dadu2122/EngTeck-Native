@@ -19,8 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
@@ -36,7 +39,6 @@ private val PSM_MAROON = Color(0xFF7A2E2E)
 private val PSM_GREEN = Color(0xFF1F7A3D)
 private val PSM_RED = Color(0xFFC0392B)
 
-// ---------- Simple text → PDF, used by the "Download PDF" button on Bio/Critical/Topic content pages ----------
 private fun psmSaveTextPdf(context: android.content.Context, title: String, body: String): String? {
     return try {
         val pageWidth = 595
@@ -135,9 +137,6 @@ private fun PsmDownloadPdfButton(title: String, body: String) {
     }
 }
 
-// ---------- Annotation toolbar: tap a color/highlight, then tap any line to color it — matches
-// the web app's "select text, apply color/highlight" feature. Saved locally per content instance
-// so each student's markings are their own (not synced to Firebase or visible to anyone else). ----------
 private val PSM_ANNOTATE_COLORS = listOf(
     "red" to Color(0xFFE85D4C),
     "navy" to PSM_NAVY,
@@ -151,7 +150,6 @@ private fun PsmAnnotatableContent(context: android.content.Context, contentKey: 
     val annotKey = "psm_annot_$contentKey"
     val lines = remember(body) { body.split("\n") }
 
-    // annotations: line index -> "red" | "navy" | "green" | "highlight"
     var annotations by remember(contentKey) {
         mutableStateOf(
             (prefs.getString(annotKey, "") ?: "")
@@ -160,7 +158,7 @@ private fun PsmAnnotatableContent(context: android.content.Context, contentKey: 
                 .toMutableMap()
         )
     }
-    var activeTool by remember { mutableStateOf<String?>(null) } // "red" | "navy" | "green" | "highlight" | null
+    var activeTool by remember { mutableStateOf<String?>(null) }
 
     fun persist() {
         prefs.edit().putString(annotKey, annotations.entries.joinToString(",") { "${it.key}:${it.value}" }).apply()
@@ -188,11 +186,10 @@ private fun PsmAnnotatableContent(context: android.content.Context, contentKey: 
                         "highlight" -> PSM_HIGHLIGHT_COLOR
                         else -> Color.Transparent
                     }
-                    Text(
+                    JustifiedText(
                         line,
                         fontSize = 14.sp,
                         color = Color(0xFF1A1A1A),
-                        lineHeight = 22.sp,
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(bg, RoundedCornerShape(4.dp))
@@ -254,9 +251,6 @@ private fun PsmAnnotatableContent(context: android.content.Context, contentKey: 
     PsmDownloadPdfButton(title, body)
 }
 
-// ---------- Shared parsing — matches the web app's parseQuestions + pcSplitCorrectAnswer exactly:
-// questions split on the next "N. " line (not blank lines), every subsequent line is an option
-// unless it's a Correct Answer/Explanation line. ----------
 private data class PsmQuestion(val number: String, val question: String, val options: List<String>, val correctAnswer: String)
 private fun psmParseQuestions(raw: String): List<PsmQuestion> {
     if (raw.isBlank()) return emptyList()
@@ -1167,5 +1161,73 @@ private fun PsmResultStat(value: Int, label: String, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text("$value", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = color)
         Text(label, fontSize = 11.sp, color = Color(0xFF5B5F6B))
+    }
+}
+
+@Composable
+private fun JustifiedText(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    fontWeight: FontWeight? = null,
+    lineSpacing: Int = 8
+) {
+    val words = remember(text) { text.split(" ").filter { it.isNotEmpty() } }
+    Layout(
+        modifier = modifier,
+        content = {
+            words.forEach { w ->
+                Text(w, color = color, fontSize = fontSize, fontWeight = fontWeight, maxLines = 1, softWrap = false)
+            }
+            Text(" ", color = color, fontSize = fontSize, fontWeight = fontWeight, maxLines = 1, softWrap = false)
+        }
+    ) { measurables, constraints ->
+        val maxWidth = constraints.maxWidth
+        val loose = Constraints()
+        val wordPlaceables = measurables.dropLast(1).map { it.measure(loose) }
+        val spaceWidth = measurables.last().measure(loose).width
+
+        data class Line(val items: MutableList<androidx.compose.ui.layout.Placeable>, var width: Int)
+        val lines = mutableListOf<Line>()
+        var current = Line(mutableListOf(), 0)
+        wordPlaceables.forEach { p ->
+            val newWidth = if (current.items.isEmpty()) p.width else current.width + spaceWidth + p.width
+            if (current.items.isNotEmpty() && newWidth > maxWidth) {
+                lines.add(current)
+                current = Line(mutableListOf(p), p.width)
+            } else {
+                current.items.add(p)
+                current.width = newWidth
+            }
+        }
+        if (current.items.isNotEmpty()) lines.add(current)
+
+        val lineHeight = (wordPlaceables.firstOrNull()?.height ?: 0) + lineSpacing
+        val totalHeight = if (lines.isEmpty()) 0 else lines.size * lineHeight
+
+        layout(maxWidth, totalHeight) {
+            lines.forEachIndexed { lineIndex, line ->
+                val isLastLine = lineIndex == lines.size - 1
+                val y = lineIndex * lineHeight
+                if (isLastLine || line.items.size <= 1) {
+                    var x = 0
+                    line.items.forEach { p ->
+                        p.placeRelative(x, y)
+                        x += p.width + spaceWidth
+                    }
+                } else {
+                    val wordsWidth = line.items.sumOf { it.width }
+                    val gapCount = line.items.size - 1
+                    val totalGap = maxWidth - wordsWidth
+                    val gap = if (totalGap > 0) totalGap / gapCount else spaceWidth
+                    var x = 0
+                    line.items.forEachIndexed { idx, p ->
+                        p.placeRelative(x, y)
+                        x += p.width + gap
+                    }
+                }
+            }
+        }
     }
 }
