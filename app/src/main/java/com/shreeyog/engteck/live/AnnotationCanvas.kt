@@ -45,7 +45,11 @@ fun AnnotationCanvas(
     color: Color,
     penWidth: Float,
     strokes: SnapshotStateList<InkShape>,
-    redoStack: SnapshotStateList<InkShape>
+    redoStack: SnapshotStateList<InkShape>,
+    // NEW: lets Pointer-tool horizontal drags turn PDF pages, like before.
+    swipeEnabled: Boolean = false,
+    onSwipeLeft: () -> Unit = {},   // dragged right-to-left -> next page
+    onSwipeRight: () -> Unit = {}   // dragged left-to-right -> previous page
 ) {
     var dragStart by remember { mutableStateOf(Offset.Zero) }
     var dragCurrent by remember { mutableStateOf<Offset?>(null) }
@@ -55,7 +59,7 @@ fun AnnotationCanvas(
     var pointerPos by remember { mutableStateOf<Offset?>(null) }
 
     Canvas(
-        modifier = modifier.pointerInput(tool, color, penWidth) {
+        modifier = modifier.pointerInput(tool, color, penWidth, swipeEnabled) {
             detectDragGestures(
                 onDragStart = { offset ->
                     dragStart = offset
@@ -110,7 +114,15 @@ fun AnnotationCanvas(
                             }
                         }
                         AnnotationTool.MOVE -> { moveIndex = -1 }
-                        AnnotationTool.POINTER -> { pointerPos = null }
+                        AnnotationTool.POINTER -> {
+                            // Swipe-to-turn-page: only fires on a clearly horizontal drag.
+                            val dx = end.x - dragStart.x
+                            val dy = end.y - dragStart.y
+                            if (swipeEnabled && abs(dx) > 70f && abs(dx) > abs(dy) * 1.5f) {
+                                if (dx < 0) onSwipeLeft() else onSwipeRight()
+                            }
+                            pointerPos = null
+                        }
                     }
                     if (tool != AnnotationTool.MOVE && tool != AnnotationTool.POINTER && strokes.isNotEmpty()) redoStack.clear()
                     freehandPoints = mutableListOf()
@@ -195,3 +207,4 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawShape(shape: In
         else -> {}
     }
 }
+
