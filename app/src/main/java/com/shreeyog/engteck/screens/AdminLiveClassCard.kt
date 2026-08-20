@@ -7,7 +7,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,9 +26,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.database.FirebaseDatabase
 import com.shreeyog.engteck.live.AgoraLiveAudio
+import com.shreeyog.engteck.live.AnnotationCanvas
+import com.shreeyog.engteck.live.AnnotationTool
+import com.shreeyog.engteck.live.InkShape
 import com.shreeyog.engteck.live.PdfSlideRenderer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+private val LIVE_NAVY = Color(0xFF0E1420)
+private val LIVE_GOLD = Color(0xFFD4A017)
+
+private enum class BoardMode { PDF, PASTE_TEXT, WHITEBOARD }
+
+private val TOOL_COLORS = listOf(
+    Color(0xFFC0392B), Color(0xFF12203D), Color(0xFF1F7A3D), Color(0xFF1B6B79), Color(0xFFE85D4C)
+)
 
 @Composable
 fun AdminLiveClassCard() {
@@ -35,12 +51,20 @@ fun AdminLiveClassCard() {
     var muted by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf("") }
 
+    var boardMode by remember { mutableStateOf(BoardMode.PDF) }
     var slidePdf by remember { mutableStateOf("") }
+    var pastedText by remember { mutableStateOf("") }
     var currentPage by remember { mutableStateOf(0) }
     var pageCount by remember { mutableStateOf(0) }
     var slideBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var uploading by remember { mutableStateOf(false) }
     var repeatCount by remember { mutableStateOf(0) }
+
+    var tool by remember { mutableStateOf(AnnotationTool.POINTER) }
+    var penColor by remember { mutableStateOf(TOOL_COLORS[0]) }
+    var penWidth by remember { mutableStateOf(6f) }
+    val strokes = remember { mutableStateListOf<InkShape>() }
+    val redoStack = remember { mutableStateListOf<InkShape>() }
 
     val pdfPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -52,9 +76,7 @@ fun AdminLiveClassCard() {
                     FirebaseDatabase.getInstance().getReference("liveClasses/default/slidePdf").setValue(b64)
                     FirebaseDatabase.getInstance().getReference("liveClasses/default/currentPage").setValue(0)
                     msg = "Slides shared with the class."
-                } else {
-                    msg = "Could not read that file."
-                }
+                } else msg = "Could not read that file."
             } catch (e: Exception) {
                 msg = "Upload failed: ${e.message}"
             }
@@ -65,46 +87,38 @@ fun AdminLiveClassCard() {
     LaunchedEffect(Unit) {
         FirebaseDatabase.getInstance().getReference("liveClasses/default/active")
             .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                    isLive = snapshot.getValue(Boolean::class.java) ?: false
-                }
-                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+                override fun onDataChange(s: com.google.firebase.database.DataSnapshot) { isLive = s.getValue(Boolean::class.java) ?: false }
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
         FirebaseDatabase.getInstance().getReference("liveClasses/default/slidePdf")
             .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                    slidePdf = snapshot.getValue(String::class.java) ?: ""
-                }
-                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+                override fun onDataChange(s: com.google.firebase.database.DataSnapshot) { slidePdf = s.getValue(String::class.java) ?: "" }
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
         FirebaseDatabase.getInstance().getReference("liveClasses/default/currentPage")
             .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                    currentPage = snapshot.getValue(Int::class.java) ?: 0
+                override fun onDataChange(s: com.google.firebase.database.DataSnapshot) {
+                    currentPage = s.getValue(Int::class.java) ?: 0
+                    strokes.clear(); redoStack.clear()
                 }
-                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
         FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests")
             .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                    repeatCount = snapshot.childrenCount.toInt()
-                }
-                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+                override fun onDataChange(s: com.google.firebase.database.DataSnapshot) { repeatCount = s.childrenCount.toInt() }
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
     }
 
     LaunchedEffect(slidePdf, currentPage) {
         if (slidePdf.isNotBlank()) {
             val result = withContext(Dispatchers.Default) {
-                val count = PdfSlideRenderer.pageCount(context, slidePdf)
-                val bmp = PdfSlideRenderer.renderPage(context, slidePdf, currentPage)
-                Pair(count, bmp)
+                Pair(PdfSlideRenderer.pageCount(context, slidePdf), PdfSlideRenderer.renderPage(context, slidePdf, currentPage))
             }
             pageCount = result.first
             slideBitmap = result.second
         } else {
-            slideBitmap = null
-            pageCount = 0
+            slideBitmap = null; pageCount = 0
         }
     }
 
@@ -112,22 +126,16 @@ fun AdminLiveClassCard() {
         starting = true
         msg = "Starting class..."
         AgoraLiveAudio.onJoined = {
-            starting = false
-            connected = true
-            msg = "You're live — students can join now."
+            starting = false; connected = true; msg = ""
             FirebaseDatabase.getInstance().getReference("liveClasses/default/active").setValue(true)
         }
-        AgoraLiveAudio.onError = { err ->
-            starting = false
-            msg = "Could not start: $err"
-        }
+        AgoraLiveAudio.onError = { err -> starting = false; msg = "Could not start: $err" }
         AgoraLiveAudio.join(context, "default", 1)
     }
 
     fun stopClass() {
         AgoraLiveAudio.leave()
-        connected = false
-        msg = ""
+        connected = false; msg = ""
         FirebaseDatabase.getInstance().getReference("liveClasses/default/active").setValue(false)
         FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests").removeValue()
     }
@@ -137,132 +145,186 @@ fun AdminLiveClassCard() {
         FirebaseDatabase.getInstance().getReference("liveClasses/default/currentPage").setValue(clamped)
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.White, RoundedCornerShape(16.dp))
-            .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(16.dp))
-            .padding(18.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .background(if (isLive) Color(0xFFE3F5E9) else Color(0xFFE3DFD3), RoundedCornerShape(100.dp))
-                .padding(horizontal = 14.dp, vertical = 6.dp)
+    if (!connected) {
+        Column(
+            modifier = Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(16.dp))
+                .border(1.5.dp, LIVE_GOLD, RoundedCornerShape(16.dp)).padding(18.dp)
         ) {
-            Text(
-                if (isLive) "● Live Now" else "● Not Live",
-                color = if (isLive) Color(0xFF1F7A3D) else Color(0xFF8A8F99),
-                fontSize = 11.5.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        Spacer(Modifier.height(14.dp))
-
-        if (!connected) {
-            Text(
-                "Start the live class — students will be able to join and hear you as soon as you start.",
-                fontSize = 12.5.sp,
-                color = Color(0xFF5B5F6B)
-            )
+            Box(modifier = Modifier.background(if (isLive) Color(0xFFE3F5E9) else Color(0xFFE3DFD3), RoundedCornerShape(100.dp)).padding(horizontal = 14.dp, vertical = 6.dp)) {
+                Text(if (isLive) "● Live Now" else "● Not Live", color = if (isLive) Color(0xFF1F7A3D) else Color(0xFF8A8F99), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(14.dp))
+            Text("Start the live class — students will be able to join and hear you as soon as you start.", fontSize = 12.5.sp, color = Color(0xFF5B5F6B))
             Spacer(Modifier.height(14.dp))
             Button(
-                onClick = { startClass() },
-                enabled = !starting,
+                onClick = { startClass() }, enabled = !starting,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1F7A3D)),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().height(48.dp)
+                shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().height(48.dp)
             ) {
-                if (starting) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("▶ Start Live Class", fontWeight = FontWeight.Bold, color = Color.White)
-                }
+                if (starting) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                else Text("▶ Start Live Class", fontWeight = FontWeight.Bold, color = Color.White)
             }
-        } else {
-            Text("🔊 You are broadcasting", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F7A3D))
-            Spacer(Modifier.height(14.dp))
+            if (msg.isNotEmpty()) { Spacer(Modifier.height(10.dp)); Text(msg, fontSize = 12.sp, color = Color(0xFF946B00)) }
+        }
+        return
+    }
 
-            if (repeatCount > 0) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(Triple(BoardMode.PDF, "📄", "PDF"), Triple(BoardMode.PASTE_TEXT, "📜", "Paste Text"), Triple(BoardMode.WHITEBOARD, "✏️", "Whiteboard")).forEach { (mode, icon, label) ->
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFFFCF3D9), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                    modifier = Modifier.weight(1f)
+                        .background(if (boardMode == mode) LIVE_NAVY else Color(0xFFE3DFD3), RoundedCornerShape(100.dp))
+                        .clickable { boardMode = mode }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("🔁 $repeatCount student(s) asked you to repeat", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF946B00))
-                }
-                Spacer(Modifier.height(10.dp))
-            }
-
-            if (slideBitmap != null) {
-                Image(
-                    bitmap = slideBitmap!!.asImageBitmap(),
-                    contentDescription = "Slide preview",
-                    contentScale = ContentScale.FillWidth,
-                    modifier = Modifier.fillMaxWidth().border(1.dp, Color(0xFFE3DFD3))
-                )
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Button(
-                        onClick = { goToPage(currentPage - 1) },
-                        enabled = currentPage > 0,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B6B79)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) { Text("‹ Prev", color = Color.White, fontWeight = FontWeight.Bold) }
-                    Text("Page ${currentPage + 1} / $pageCount", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
-                    Button(
-                        onClick = { goToPage(currentPage + 1) },
-                        enabled = currentPage < pageCount - 1,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B6B79)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) { Text("Next ›", color = Color.White, fontWeight = FontWeight.Bold) }
-                }
-                Spacer(Modifier.height(14.dp))
-            }
-
-            Button(
-                onClick = { pdfPickerLauncher.launch("application/pdf") },
-                enabled = !uploading,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4A017)),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().height(46.dp)
-            ) {
-                if (uploading) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    Text(if (slidePdf.isBlank()) "📂 Share Slides (PDF)" else "📂 Change Slides", color = Color(0xFF12203D), fontWeight = FontWeight.Bold)
-                }
-            }
-            Spacer(Modifier.height(14.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                    onClick = {
-                        muted = !muted
-                        AgoraLiveAudio.setMuted(muted)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = if (muted) Color(0xFF8A8F99) else Color(0xFF1B6B79)),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Text(if (muted) "🔇 Unmute" else "🎤 Mute", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-                Button(
-                    onClick = { stopClass() },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC0392B)),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Text("⏹ Stop Class", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("$icon $label", color = if (boardMode == mode) Color.White else Color(0xFF5B5F6B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
 
-        if (msg.isNotEmpty()) {
+        if (repeatCount > 0) {
+            Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFFCF3D9), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 10.dp)) {
+                Text("🔁 $repeatCount student(s) asked you to repeat", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF946B00))
+            }
             Spacer(Modifier.height(10.dp))
-            Text(msg, fontSize = 12.sp, color = Color(0xFF946B00))
         }
+
+        Box(
+            modifier = Modifier.fillMaxWidth().height(320.dp).background(Color.White).border(2.dp, LIVE_GOLD)
+        ) {
+            when (boardMode) {
+                BoardMode.PDF -> {
+                    if (slideBitmap != null) {
+                        Image(bitmap = slideBitmap!!.asImageBitmap(), contentDescription = "Slide", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                    } else {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(if (slidePdf.isBlank()) "No PDF shared yet." else "Loading...", fontSize = 12.sp, color = Color(0xFF8A8F99))
+                        }
+                    }
+                }
+                BoardMode.PASTE_TEXT -> {
+                    Box(Modifier.fillMaxSize().padding(14.dp)) {
+                        Text(pastedText.ifBlank { "Paste text below to show it here." }, fontSize = 14.sp, color = Color(0xFF1A1A1A))
+                    }
+                }
+                BoardMode.WHITEBOARD -> {
+                    Box(Modifier.fillMaxSize().background(Color(0xFFFFFDF7)))
+                }
+            }
+            AnnotationCanvas(
+                modifier = Modifier.fillMaxSize(),
+                tool = tool, color = penColor, penWidth = penWidth,
+                strokes = strokes, redoStack = redoStack
+            )
+        }
+
+        if (boardMode == BoardMode.PDF && pageCount > 0) {
+            Spacer(Modifier.height(10.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Button(onClick = { goToPage(currentPage - 1) }, enabled = currentPage > 0, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B6B79)), shape = RoundedCornerShape(12.dp)) {
+                    Text("‹ Prev", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                Text("Page ${currentPage + 1} / $pageCount", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
+                Button(onClick = { goToPage(currentPage + 1) }, enabled = currentPage < pageCount - 1, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B6B79)), shape = RoundedCornerShape(12.dp)) {
+                    Text("Next ›", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        if (boardMode == BoardMode.PASTE_TEXT) {
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = pastedText, onValueChange = { pastedText = it },
+                modifier = Modifier.fillMaxWidth().height(90.dp),
+                placeholder = { Text("Paste text to show on board...") }
+            )
+        }
+        if (boardMode == BoardMode.PDF) {
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = { pdfPickerLauncher.launch("application/pdf") }, enabled = !uploading,
+                colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD), shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth().height(44.dp)
+            ) {
+                if (uploading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Text(if (slidePdf.isBlank()) "📂 Share Slides (PDF)" else "📂 Change Slides", color = Color(0xFF12203D), fontWeight = FontWeight.Bold)
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(listOf(
+                AnnotationTool.POINTER to "👆", AnnotationTool.MARKER to "✏️", AnnotationTool.HIGHLIGHTER to "🖍️",
+                AnnotationTool.ERASER to "🧹", AnnotationTool.RECTANGLE to "▭", AnnotationTool.CIRCLE to "○",
+                AnnotationTool.LINE to "➖", AnnotationTool.ARROW to "➡️"
+            )) { (t, icon) ->
+                val active = tool == t
+                Box(
+                    modifier = Modifier.background(if (active) LIVE_NAVY else Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
+                        .clickable { tool = t }.padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    Text(icon, fontSize = 16.sp)
+                }
+            }
+            item {
+                Box(
+                    modifier = Modifier.background(Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
+                        .clickable { if (strokes.isNotEmpty()) { redoStack.add(strokes.removeAt(strokes.size - 1)) } }
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) { Text("↩ Undo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A)) }
+            }
+            item {
+                Box(
+                    modifier = Modifier.background(Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
+                        .clickable { if (redoStack.isNotEmpty()) { strokes.add(redoStack.removeAt(redoStack.size - 1)) } }
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) { Text("↪ Redo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A)) }
+            }
+            item {
+                Box(
+                    modifier = Modifier.background(Color(0xFFFBE0DE), RoundedCornerShape(10.dp))
+                        .clickable { strokes.clear(); redoStack.clear() }
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) { Text("🧹 Clear", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC0392B)) }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Colour:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5B5F6B))
+            TOOL_COLORS.forEach { c ->
+                Box(
+                    modifier = Modifier.size(28.dp).background(c, CircleShape)
+                        .border(if (penColor == c) 3.dp else 0.dp, Color(0xFF1A1A1A), CircleShape)
+                        .clickable { penColor = c }
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("Thin" to 3f, "Medium" to 6f, "Thick" to 12f).forEach { (label, w) ->
+                Box(
+                    modifier = Modifier.background(if (penWidth == w) LIVE_GOLD else Color(0xFFF5F3EC), RoundedCornerShape(100.dp))
+                        .clickable { penWidth = w }.padding(horizontal = 16.dp, vertical = 8.dp)
+                ) { Text(label, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = if (penWidth == w) Color.White else Color(0xFF5B5F6B)) }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(
+                onClick = { muted = !muted; AgoraLiveAudio.setMuted(muted) },
+                colors = ButtonDefaults.buttonColors(containerColor = if (muted) Color(0xFF8A8F99) else Color(0xFF1B6B79)),
+                shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f)
+            ) { Text(if (muted) "🔇 Unmute" else "🎤 Mute", color = Color.White, fontWeight = FontWeight.Bold) }
+            Button(
+                onClick = { stopClass() },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC0392B)),
+                shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f)
+            ) { Text("⏹ Stop Class", color = Color.White, fontWeight = FontWeight.Bold) }
+        }
+        if (msg.isNotEmpty()) { Spacer(Modifier.height(10.dp)); Text(msg, fontSize = 12.sp, color = Color(0xFF946B00)) }
     }
 }
