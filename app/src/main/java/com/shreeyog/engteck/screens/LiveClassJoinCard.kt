@@ -5,10 +5,17 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,6 +35,27 @@ import com.shreeyog.engteck.live.PdfSlideRenderer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+// Same palette as the teacher's board (AdminLiveClassCard.kt) so both sides look identical.
+private val SLIVE_NAVY = Color(0xFF0E1420)
+private val SLIVE_GOLD = Color(0xFFD4A017)
+private val SLIVE_GREEN = Color(0xFF4CD980)
+
+// Same gently-pulsing dot as the teacher's board.
+@Composable
+private fun StudentBlinkingDot(color: Color, size: androidx.compose.ui.unit.Dp = 8.dp) {
+    val infiniteTransition = rememberInfiniteTransition(label = "studentLiveDotBlink")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "studentLiveDotAlpha"
+    )
+    Box(Modifier.size(size).background(color.copy(alpha = alpha), CircleShape))
+}
+
 @Composable
 fun LiveClassJoinCard() {
     val context = LocalContext.current
@@ -44,6 +72,7 @@ fun LiveClassJoinCard() {
     var currentPage by remember { mutableStateOf(0) }
     var slideBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var repeatSent by remember { mutableStateOf(false) }
+    var participantCount by remember { mutableStateOf(1) } // at least this student
 
     fun doJoin() {
         joining = true
@@ -53,7 +82,7 @@ fun LiveClassJoinCard() {
         AgoraLiveAudio.onJoined = {
             joining = false
             joined = true
-            joinMsg = "Connected — you can hear the teacher now."
+            joinMsg = ""
         }
         AgoraLiveAudio.onError = { err ->
             joining = false
@@ -159,29 +188,30 @@ fun LiveClassJoinCard() {
         }
         Spacer(Modifier.height(14.dp))
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color.White)
-                .border(1.5.dp, Color(0xFFD4A017))
-                .padding(vertical = 22.dp, horizontal = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
+        if (!joined) {
+            // ---------- Not yet joined: same simple join form as before ----------
+            Column(
                 modifier = Modifier
-                    .background(if (isLive) Color(0xFFE3F5E9) else Color(0xFFE3DFD3), RoundedCornerShape(100.dp))
-                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .border(1.5.dp, SLIVE_GOLD)
+                    .padding(vertical = 22.dp, horizontal = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    if (isLive) "● Live Now" else "● Not Live Right Now",
-                    color = if (isLive) Color(0xFF1F7A3D) else Color(0xFF8A8F99),
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Spacer(Modifier.height(14.dp))
+                Box(
+                    modifier = Modifier
+                        .background(if (isLive) Color(0xFFE3F5E9) else Color(0xFFE3DFD3), RoundedCornerShape(100.dp))
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        if (isLive) "● Live Now" else "● Not Live Right Now",
+                        color = if (isLive) Color(0xFF1F7A3D) else Color(0xFF8A8F99),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
 
-            if (!joined) {
                 Text(
                     "Join to hear the teacher live and follow along with shared slides. You can raise your hand any time to ask something.",
                     fontSize = 12.5.sp,
@@ -232,28 +262,66 @@ fun LiveClassJoinCard() {
                         Text("Join Live Class", fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
-            } else {
-                Text("🔊 You're connected", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F7A3D))
-                Spacer(Modifier.height(14.dp))
 
-                if (slideBitmap != null) {
-                    Image(
-                        bitmap = slideBitmap!!.asImageBitmap(),
-                        contentDescription = "Slide",
-                        contentScale = ContentScale.FillWidth,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0xFFE3DFD3))
-                    )
-                    Spacer(Modifier.height(14.dp))
-                } else if (slidePdf.isNotBlank()) {
+                if (joinMsg.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(joinMsg, fontSize = 12.sp, color = Color(0xFF946B00), textAlign = TextAlign.Center)
+                }
+            }
+        } else {
+            // ---------- Joined: same "Smart Digital Board" look as the teacher's screen ----------
+            Column(modifier = Modifier.fillMaxWidth()) {
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().background(SLIVE_NAVY).padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StudentBlinkingDot(SLIVE_GREEN)
+                        Spacer(Modifier.width(6.dp))
+                        Text("S.D. BOARD", color = Color.White.copy(alpha = 0.85f), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
                     Box(
-                        modifier = Modifier.fillMaxWidth().height(160.dp),
-                        contentAlignment = Alignment.Center
-                    ) { CircularProgressIndicator(color = Color(0xFF1B6B79)) }
-                    Spacer(Modifier.height(14.dp))
+                        modifier = Modifier.background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(100.dp))
+                            .border(1.dp, SLIVE_GOLD.copy(alpha = 0.6f), RoundedCornerShape(100.dp))
+                            .padding(horizontal = 14.dp, vertical = 5.dp)
+                    ) {
+                        Text("Connected: $participantCount", color = SLIVE_GOLD, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StudentBlinkingDot(SLIVE_GREEN)
+                        Spacer(Modifier.width(6.dp))
+                        Text("ON AIR", color = SLIVE_GREEN, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
 
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(460.dp)
+                        .background(Color.White)
+                        .border(3.dp, SLIVE_GOLD)
+                ) {
+                    if (slideBitmap != null) {
+                        Image(
+                            bitmap = slideBitmap!!.asImageBitmap(),
+                            contentDescription = "Slide",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else if (slidePdf.isNotBlank()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = SLIVE_NAVY)
+                        }
+                    } else {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("🔊 You're connected", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F7A3D))
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
                         onClick = {
@@ -268,7 +336,7 @@ fun LiveClassJoinCard() {
                     Button(
                         onClick = { sendRepeatRequest() },
                         enabled = !repeatSent,
-                        colors = ButtonDefaults.buttonColors(containerColor = if (repeatSent) Color(0xFF8A8F99) else Color(0xFFD4A017)),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (repeatSent) Color(0xFF8A8F99) else SLIVE_GOLD),
                         shape = RoundedCornerShape(14.dp)
                     ) {
                         Text(if (repeatSent) "🔁 Sent" else "🔁 Please Repeat", color = Color.White, fontWeight = FontWeight.Bold)
@@ -289,11 +357,11 @@ fun LiveClassJoinCard() {
                         Text("Leave", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
-            }
 
-            if (joinMsg.isNotEmpty()) {
-                Spacer(Modifier.height(10.dp))
-                Text(joinMsg, fontSize = 12.sp, color = Color(0xFF946B00), textAlign = TextAlign.Center)
+                if (joinMsg.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(joinMsg, fontSize = 12.sp, color = Color(0xFF946B00), textAlign = TextAlign.Center)
+                }
             }
         }
     }
