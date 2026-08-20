@@ -1,7 +1,10 @@
 package com.shreeyog.engteck.live
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
@@ -10,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import kotlin.math.abs
 
 enum class AnnotationTool { POINTER, MOVE, MARKER, HIGHLIGHTER, ERASER, RECTANGLE, CIRCLE, LINE, ARROW }
@@ -46,10 +50,11 @@ fun AnnotationCanvas(
     penWidth: Float,
     strokes: SnapshotStateList<InkShape>,
     redoStack: SnapshotStateList<InkShape>,
-    // NEW: lets Pointer-tool horizontal drags turn PDF pages, like before.
-    swipeEnabled: Boolean = false,
-    onSwipeLeft: () -> Unit = {},   // dragged right-to-left -> next page
-    onSwipeRight: () -> Unit = {}   // dragged left-to-right -> previous page
+    swipeEnabled: Boolean = false,          // Pointer-tool horizontal drag turns PDF pages
+    onSwipeLeft: () -> Unit = {},           // dragged right-to-left -> next page
+    onSwipeRight: () -> Unit = {},          // dragged left-to-right -> previous page
+    // Two-finger pinch/pan reported here so the caller can drive its own zoom state.
+    onZoomPan: (zoomChange: Float, panChange: Offset) -> Unit = { _, _ -> }
 ) {
     var dragStart by remember { mutableStateOf(Offset.Zero) }
     var dragCurrent by remember { mutableStateOf<Offset?>(null) }
@@ -60,45 +65,67 @@ fun AnnotationCanvas(
 
     Canvas(
         modifier = modifier.pointerInput(tool, color, penWidth, swipeEnabled) {
-            detectDragGestures(
-                onDragStart = { offset ->
-                    dragStart = offset
-                    dragCurrent = offset
-                    when (tool) {
-                        AnnotationTool.MARKER, AnnotationTool.HIGHLIGHTER -> {
-                            freehandPoints = mutableListOf(offset)
-                        }
-                        AnnotationTool.MOVE -> {
-                            moveIndex = strokes.indexOfLast { it.containsPoint(offset) }
-                            moveLast = offset
-                        }
-                        AnnotationTool.POINTER -> { pointerPos = offset }
-                        else -> {}
+            // Single gesture handler for everything: 1 finger drives the selected
+            // tool, 2+ fingers drive pinch-zoom/pan. Only one detector exists for
+            // this whole canvas, so there is nothing for it to conflict with.
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                var isMultiTouch = false
+
+                dragStart = down.position
+                dragCurrent = down.position
+                when (tool) {
+                    AnnotationTool.MARKER, AnnotationTool.HIGHLIGHTER -> freehandPoints = mutableListOf(down.position)
+                    AnnotationTool.MOVE -> {
+                        moveIndex = strokes.indexOfLast { it.containsPoint(down.position) }
+                        moveLast = down.position
                     }
-                },
-                onDrag = { change, _ ->
-                    dragCurrent = change.position
-                    when (tool) {
-                        AnnotationTool.MARKER, AnnotationTool.HIGHLIGHTER -> {
-                            freehandPoints = (freehandPoints + change.position).toMutableList()
-                        }
-                        AnnotationTool.MOVE -> {
-                            if (moveIndex >= 0 && moveIndex < strokes.size) {
-                                val delta = change.position - moveLast
-                                val old = strokes[moveIndex]
-                                strokes[moveIndex] = old.copy(
-                                    start = old.start + delta,
-                                    end = old.end + delta,
-                                    points = old.points.map { it + delta }
-                                )
-                                moveLast = change.position
+                    AnnotationTool.POINTER -> pointerPos = down.position
+                    else -> {}
+                }
+
+                do {
+                    val event = awaitPointerEvent()
+                    val activeCount = event.changes.count { it.pressed }
+
+                    if (activeCount >= 2) {
+                        // A second finger joined -> switch this whole gesture to zoom/pan,
+                        // abandon whatever single-finger tool action was starting.
+                        isMultiTouch = true
+                        val zoomChange = event.calculateZoom()
+                        val panChange = event.calculatePan()
+                        onZoomPan(zoomChange, panChange)
+                        event.changes.forEach { it.consume() }
+                    } else if (!isMultiTouch) {
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.firstOrNull()
+                        if (change != null && change.positionChanged()) {
+                            dragCurrent = change.position
+                            when (tool) {
+                                AnnotationTool.MARKER, AnnotationTool.HIGHLIGHTER -> {
+                                    freehandPoints = (freehandPoints + change.position).toMutableList()
+                                }
+                                AnnotationTool.MOVE -> {
+                                    if (moveIndex >= 0 && moveIndex < strokes.size) {
+                                        val delta = change.position - moveLast
+                                        val old = strokes[moveIndex]
+                                        strokes[moveIndex] = old.copy(
+                                            start = old.start + delta,
+                                            end = old.end + delta,
+                                            points = old.points.map { it + delta }
+                                        )
+                                        moveLast = change.position
+                                    }
+                                }
+                                AnnotationTool.POINTER -> { pointerPos = change.position }
+                                else -> {}
                             }
+                            change.consume()
                         }
-                        AnnotationTool.POINTER -> { pointerPos = change.position }
-                        else -> {}
                     }
-                },
-                onDragEnd = {
+                } while (event.changes.any { it.pressed })
+
+                // Gesture finished — finalize the tool action, unless it turned into a zoom/pan.
+                if (!isMultiTouch) {
                     val end = dragCurrent ?: dragStart
                     when (tool) {
                         AnnotationTool.ERASER -> strokes.clear()
@@ -115,20 +142,20 @@ fun AnnotationCanvas(
                         }
                         AnnotationTool.MOVE -> { moveIndex = -1 }
                         AnnotationTool.POINTER -> {
-                            // Swipe-to-turn-page: only fires on a clearly horizontal drag.
                             val dx = end.x - dragStart.x
                             val dy = end.y - dragStart.y
                             if (swipeEnabled && abs(dx) > 70f && abs(dx) > abs(dy) * 1.5f) {
                                 if (dx < 0) onSwipeLeft() else onSwipeRight()
                             }
-                            pointerPos = null
                         }
                     }
                     if (tool != AnnotationTool.MOVE && tool != AnnotationTool.POINTER && strokes.isNotEmpty()) redoStack.clear()
-                    freehandPoints = mutableListOf()
-                    dragCurrent = null
                 }
-            )
+
+                pointerPos = null
+                freehandPoints = mutableListOf()
+                dragCurrent = null
+            }
         }
     ) {
         strokes.forEach { shape: InkShape -> drawShape(shape) }
@@ -155,7 +182,6 @@ fun AnnotationCanvas(
             }
         }
 
-        // Pointer: hollow red circle following the touch (laser-pointer style)
         val pp = pointerPos
         if (tool == AnnotationTool.POINTER && pp != null) {
             drawCircle(color = Color(0xFFE53935), radius = 16f, center = pp, style = Stroke(width = 4f))
@@ -207,4 +233,3 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawShape(shape: In
         else -> {}
     }
 }
-
