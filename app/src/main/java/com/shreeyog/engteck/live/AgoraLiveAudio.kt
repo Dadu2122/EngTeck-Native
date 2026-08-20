@@ -73,7 +73,7 @@ object AgoraLiveAudio {
 
     fun join(context: Context, channel: String, uid: Int) {
         scope.launch {
-            val token = fetchToken(channel, uid)
+            val token = kotlinx.coroutines.withTimeoutOrNull(12000) { fetchToken(channel, uid) }
             if (token == null) {
                 onError?.invoke("TOKEN_FETCH_FAILED")
                 return@launch
