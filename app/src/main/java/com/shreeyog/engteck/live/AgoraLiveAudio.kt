@@ -73,16 +73,28 @@ object AgoraLiveAudio {
 
     fun join(context: Context, channel: String, uid: Int) {
         scope.launch {
-            // TEMP TEST: try joining with an EMPTY token first — if your Agora
-            // project doesn't have App Certificate enabled (same as the WebView
-            // site, which joins without asking for a token), this alone should connect.
             val eng = ensureEngine(context)
             val options = ChannelMediaOptions()
             options.channelProfile = Constants.CHANNEL_PROFILE_LIVE_BROADCASTING
             options.clientRoleType = Constants.CLIENT_ROLE_BROADCASTER
             options.publishMicrophoneTrack = true
             options.autoSubscribeAudio = true
+
+            var joinedOrErrored = false
+            val originalOnJoined = onJoined
+            val originalOnError = onError
+            onJoined = { uidResult -> joinedOrErrored = true; originalOnJoined?.invoke(uidResult) }
+            onError = { err -> joinedOrErrored = true; originalOnError?.invoke(err) }
+
             eng.joinChannel("", channel, uid, options)
+
+            // If neither onJoinChannelSuccess nor onError fires within 15s
+            // (e.g. no real internet, mic permission blocked, wrong App ID),
+            // surface a clear error instead of spinning forever.
+            kotlinx.coroutines.delay(15000)
+            if (!joinedOrErrored) {
+                onError?.invoke("JOIN_TIMEOUT — no response from Agora after 15s. Check internet connection and Microphone permission.")
+            }
         }
     }
 
