@@ -17,6 +17,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,6 +54,23 @@ private enum class BoardMode { PDF, PASTE_TEXT, WHITEBOARD }
 private val TOOL_COLORS = listOf(
     Color(0xFFC0392B), Color(0xFF12203D), Color(0xFF1F7A3D), Color(0xFF1B6B79), Color(0xFFE85D4C)
 )
+
+// A live-status dot that gently pulses (fades in/out) instead of sitting static —
+// signals "actively live" the way a recording/broadcast indicator usually does.
+@Composable
+private fun BlinkingDot(color: Color, size: androidx.compose.ui.unit.Dp = 8.dp) {
+    val infiniteTransition = rememberInfiniteTransition(label = "liveDotBlink")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "liveDotAlpha"
+    )
+    Box(Modifier.size(size).background(color.copy(alpha = alpha), CircleShape))
+}
 
 @Composable
 fun AdminLiveClassCard() {
@@ -199,7 +222,7 @@ fun AdminLiveClassCard() {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(8.dp).background(LIVE_GREEN, CircleShape))
+                BlinkingDot(LIVE_GREEN)
                 Spacer(Modifier.width(6.dp))
                 Text("S.D. BOARD", color = Color.White.copy(alpha = 0.85f), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
             }
@@ -211,30 +234,22 @@ fun AdminLiveClassCard() {
                 Text("Connected: $participantCount", color = LIVE_GOLD, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(8.dp).background(LIVE_GREEN, CircleShape))
+                BlinkingDot(LIVE_GREEN)
                 Spacer(Modifier.width(6.dp))
                 Text("ON AIR", color = LIVE_GREEN, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
             }
         }
 
-        // Big board — pure white, and stretched to the full screen width even
-        // though the parent screen has its own side padding. BoxWithConstraints
-        // measures the real available width, so the offset needed is calculated
-        // exactly (no guessing, no negative-padding crash risk).
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
-            val extraWidth = (screenWidthDp - maxWidth).coerceAtLeast(0.dp)
-            val bleedOffset = extraWidth / 2
-
-            Box(
-                modifier = Modifier
-                    .width(screenWidthDp)
-                    .offset(x = -bleedOffset)
-                    .height(460.dp)
-                    .background(Color.White)
-                    .border(3.dp, LIVE_GOLD)
-                    .onSizeChanged { boardSizePx = it }
-            ) {
+        // Big board — pure white. Width kept simple (fillMaxWidth) after the
+        // earlier full-bleed offset trick broke the layout — reverted for safety.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(460.dp)
+                .background(Color.White)
+                .border(3.dp, LIVE_GOLD)
+                .onSizeChanged { boardSizePx = it }
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -282,7 +297,6 @@ fun AdminLiveClassCard() {
                         zoomOffsetY = (zoomOffsetY + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
                     }
                 )
-            }
             }
         }
 
