@@ -87,6 +87,8 @@ private fun AdminPanelScreen() {
         Spacer(Modifier.height(16.dp))
 
         AdminAccordionSection("Content Editor", "📝") { AdminContentEditorCard() }
+        AdminAccordionSection("Live Class Control", "🔴") { AdminLiveClassCard() }
+        Spacer(Modifier.height(10.dp))
         Spacer(Modifier.height(10.dp))
         AdminAccordionSection("Free PDF Sets", "📄") { AdminFreePdfSetsCard() }
         Spacer(Modifier.height(10.dp))
