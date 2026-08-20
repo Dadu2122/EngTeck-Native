@@ -10,6 +10,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url 'https://download.agora.io/sdk/release/' }
     }
 }
 rootProject.name = "EngTeck"
