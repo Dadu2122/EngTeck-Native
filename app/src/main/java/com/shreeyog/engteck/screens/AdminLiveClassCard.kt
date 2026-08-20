@@ -51,6 +51,7 @@ fun AdminLiveClassCard() {
     var connected by remember { mutableStateOf(false) }
     var muted by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf("") }
+    var pastedTextDraft by remember { mutableStateOf("") }
 
     var boardMode by remember { mutableStateOf(BoardMode.PDF) }
     var slidePdf by remember { mutableStateOf("") }
@@ -298,9 +299,27 @@ fun AdminLiveClassCard() {
         if (boardMode == BoardMode.PASTE_TEXT) {
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
-                value = pastedText, onValueChange = { pastedText = it },
+                value = pastedTextDraft, onValueChange = { pastedTextDraft = it },
                 modifier = Modifier.fillMaxWidth().height(90.dp),
                 placeholder = { Text("Paste text to show on board...") }
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = { pastedText = pastedTextDraft },
+                colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().height(42.dp)
+            ) { Text("💾 Save to Board", color = Color(0xFF12203D), fontWeight = FontWeight.Bold) }
+        }
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = { pastedText = pastedTextDraft },
+                colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().height(42.dp)
+            ) { Text("💾 Save to Board", color = Color(0xFF12203D), fontWeight = FontWeight.Bold) }
+        }
             )
         }
         if (boardMode == BoardMode.PDF) {
