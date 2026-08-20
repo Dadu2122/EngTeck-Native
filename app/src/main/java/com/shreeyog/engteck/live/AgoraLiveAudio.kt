@@ -18,6 +18,9 @@ import java.net.URL
 object AgoraLiveAudio {
     private const val AGORA_APP_ID = "5b0232817d3b4c33a96d515a476e6a5f"
     private const val AGORA_TOKEN_SERVER = "https://shreeyog-agora-token-server.vercel.app/api/generate-token"
+    // Must match LIVE_CHANNEL in the website (index.html) so the native app and
+    // the website end up on the exact same Agora channel.
+    private const val LIVE_CHANNEL_PREFIX = "ENGLISH_HUB_LIVE_"
 
     private var engine: RtcEngine? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -55,9 +58,9 @@ object AgoraLiveAudio {
         return engine!!
     }
 
-    private suspend fun fetchToken(channel: String, uid: Int): String? = withContext(Dispatchers.IO) {
+    private suspend fun fetchToken(channel: String, uid: Int, role: String): String? = withContext(Dispatchers.IO) {
         try {
-            val url = URL("$AGORA_TOKEN_SERVER?channel=$channel&uid=$uid&role=host")
+            val url = URL("$AGORA_TOKEN_SERVER?channel=$channel&uid=$uid&role=$role")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
             conn.connectTimeout = 8000
@@ -71,13 +74,22 @@ object AgoraLiveAudio {
         }
     }
 
-    fun join(context: Context, channel: String, uid: Int) {
+    // channel: pass the short name (e.g. "default") — the website's
+    // "ENGLISH_HUB_LIVE_" prefix is added automatically so both sides match.
+    // role: "host" for the teacher, "audience" for a student.
+    fun join(context: Context, channel: String, uid: Int, role: String = "host") {
+        val fullChannel = LIVE_CHANNEL_PREFIX + channel
         scope.launch {
+            val token = kotlinx.coroutines.withTimeoutOrNull(12000) { fetchToken(fullChannel, uid, role) }
+            if (token == null) {
+                onError?.invoke("TOKEN_FETCH_FAILED")
+                return@launch
+            }
             val eng = ensureEngine(context)
             val options = ChannelMediaOptions()
             options.channelProfile = Constants.CHANNEL_PROFILE_LIVE_BROADCASTING
-            options.clientRoleType = Constants.CLIENT_ROLE_BROADCASTER
-            options.publishMicrophoneTrack = true
+            options.clientRoleType = if (role == "audience") Constants.CLIENT_ROLE_AUDIENCE else Constants.CLIENT_ROLE_BROADCASTER
+            options.publishMicrophoneTrack = role != "audience"
             options.autoSubscribeAudio = true
 
             var joinedOrErrored = false
@@ -86,14 +98,11 @@ object AgoraLiveAudio {
             onJoined = { uidResult -> joinedOrErrored = true; originalOnJoined?.invoke(uidResult) }
             onError = { err -> joinedOrErrored = true; originalOnError?.invoke(err) }
 
-            eng.joinChannel("", channel, uid, options)
+            eng.joinChannel(token, fullChannel, uid, options)
 
-            // If neither onJoinChannelSuccess nor onError fires within 15s
-            // (e.g. no real internet, mic permission blocked, wrong App ID),
-            // surface a clear error instead of spinning forever.
             kotlinx.coroutines.delay(15000)
             if (!joinedOrErrored) {
-                onError?.invoke("JOIN_TIMEOUT — no response from Agora after 15s. Check internet connection and Microphone permission.")
+                onError?.invoke("JOIN_TIMEOUT — no response from Agora after 15s. Check internet connection.")
             }
         }
     }
