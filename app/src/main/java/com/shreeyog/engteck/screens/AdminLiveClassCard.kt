@@ -35,6 +35,7 @@ import kotlinx.coroutines.withContext
 
 private val LIVE_NAVY = Color(0xFF0E1420)
 private val LIVE_GOLD = Color(0xFFD4A017)
+private val LIVE_GREEN = Color(0xFF4CD980)
 
 private enum class BoardMode { PDF, PASTE_TEXT, WHITEBOARD }
 
@@ -59,6 +60,7 @@ fun AdminLiveClassCard() {
     var slideBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var uploading by remember { mutableStateOf(false) }
     var repeatCount by remember { mutableStateOf(0) }
+    var participantCount by remember { mutableStateOf(0) }
 
     var tool by remember { mutableStateOf(AnnotationTool.POINTER) }
     var penColor by remember { mutableStateOf(TOOL_COLORS[0]) }
@@ -129,13 +131,15 @@ fun AdminLiveClassCard() {
             starting = false; connected = true; msg = ""
             FirebaseDatabase.getInstance().getReference("liveClasses/default/active").setValue(true)
         }
+        AgoraLiveAudio.onUserJoined = { participantCount++ }
+        AgoraLiveAudio.onUserLeft = { if (participantCount > 0) participantCount-- }
         AgoraLiveAudio.onError = { err -> starting = false; msg = "Could not start: $err" }
         AgoraLiveAudio.join(context, "default", 1)
     }
 
     fun stopClass() {
         AgoraLiveAudio.leave()
-        connected = false; msg = ""
+        connected = false; msg = ""; participantCount = 0
         FirebaseDatabase.getInstance().getReference("liveClasses/default/active").setValue(false)
         FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests").removeValue()
     }
@@ -169,30 +173,41 @@ fun AdminLiveClassCard() {
         return
     }
 
+    // ---------- Connected: full dark "Smart Digital Board" layout ----------
     Column(modifier = Modifier.fillMaxWidth()) {
-        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(Triple(BoardMode.PDF, "📄", "PDF"), Triple(BoardMode.PASTE_TEXT, "📜", "Paste Text"), Triple(BoardMode.WHITEBOARD, "✏️", "Whiteboard")).forEach { (mode, icon, label) ->
-                Box(
-                    modifier = Modifier.weight(1f)
-                        .background(if (boardMode == mode) LIVE_NAVY else Color(0xFFE3DFD3), RoundedCornerShape(100.dp))
-                        .clickable { boardMode = mode }
-                        .padding(vertical = 10.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("$icon $label", color = if (boardMode == mode) Color.White else Color(0xFF5B5F6B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
+
+        // Dark status strip: S.D. BOARD | Connected: N | ON AIR
+        Row(
+            modifier = Modifier.fillMaxWidth().background(LIVE_NAVY, RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).background(LIVE_GREEN, CircleShape))
+                Spacer(Modifier.width(6.dp))
+                Text("S.D. BOARD", color = Color.White.copy(alpha = 0.85f), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+            }
+            Box(
+                modifier = Modifier.background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(100.dp))
+                    .border(1.dp, LIVE_GOLD.copy(alpha = 0.6f), RoundedCornerShape(100.dp))
+                    .padding(horizontal = 14.dp, vertical = 5.dp)
+            ) {
+                Text("Connected: $participantCount", color = LIVE_GOLD, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).background(LIVE_GREEN, CircleShape))
+                Spacer(Modifier.width(6.dp))
+                Text("ON AIR", color = LIVE_GREEN, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
             }
         }
 
-        if (repeatCount > 0) {
-            Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFFCF3D9), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 10.dp)) {
-                Text("🔁 $repeatCount student(s) asked you to repeat", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF946B00))
-            }
-            Spacer(Modifier.height(10.dp))
-        }
-
+        // Big board — gold framed
         Box(
-            modifier = Modifier.fillMaxWidth().height(320.dp).background(Color.White).border(2.dp, LIVE_GOLD)
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 460.dp)
+                .background(Color(0xFFFFFDF7))
+                .border(3.dp, LIVE_GOLD)
         ) {
             when (boardMode) {
                 BoardMode.PDF -> {
@@ -205,12 +220,12 @@ fun AdminLiveClassCard() {
                     }
                 }
                 BoardMode.PASTE_TEXT -> {
-                    Box(Modifier.fillMaxSize().padding(14.dp)) {
-                        Text(pastedText.ifBlank { "Paste text below to show it here." }, fontSize = 14.sp, color = Color(0xFF1A1A1A))
+                    Box(Modifier.fillMaxSize().padding(20.dp)) {
+                        Text(pastedText.ifBlank { "Paste text below to show it here." }, fontSize = 15.sp, color = Color(0xFF1A1A1A))
                     }
                 }
                 BoardMode.WHITEBOARD -> {
-                    Box(Modifier.fillMaxSize().background(Color(0xFFFFFDF7)))
+                    Box(Modifier.fillMaxSize())
                 }
             }
             AnnotationCanvas(
@@ -220,15 +235,62 @@ fun AdminLiveClassCard() {
             )
         }
 
-        if (boardMode == BoardMode.PDF && pageCount > 0) {
-            Spacer(Modifier.height(10.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = { goToPage(currentPage - 1) }, enabled = currentPage > 0, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B6B79)), shape = RoundedCornerShape(12.dp)) {
-                    Text("‹ Prev", color = Color.White, fontWeight = FontWeight.Bold)
+        // Dark page-nav strip under the board
+        Row(
+            modifier = Modifier.fillMaxWidth().background(LIVE_NAVY, RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (boardMode == BoardMode.PDF && pageCount > 0) {
+                Box(
+                    modifier = Modifier.background(Color.Transparent, RoundedCornerShape(10.dp))
+                        .border(1.5.dp, LIVE_GOLD, RoundedCornerShape(10.dp))
+                        .clickable(enabled = currentPage > 0) { goToPage(currentPage - 1) }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) { Text("‹", color = LIVE_GOLD, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+                Spacer(Modifier.width(10.dp))
+                Box(modifier = Modifier.background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp)) {
+                    Text("${currentPage + 1}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
-                Text("Page ${currentPage + 1} / $pageCount", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
-                Button(onClick = { goToPage(currentPage + 1) }, enabled = currentPage < pageCount - 1, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B6B79)), shape = RoundedCornerShape(12.dp)) {
-                    Text("Next ›", color = Color.White, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(6.dp))
+                Text("/", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
+                Spacer(Modifier.width(6.dp))
+                Box(modifier = Modifier.background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp)) {
+                    Text("$pageCount", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(10.dp))
+                Box(
+                    modifier = Modifier.background(Color.Transparent, RoundedCornerShape(10.dp))
+                        .border(1.5.dp, LIVE_GOLD, RoundedCornerShape(10.dp))
+                        .clickable(enabled = currentPage < pageCount - 1) { goToPage(currentPage + 1) }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) { Text("›", color = LIVE_GOLD, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+            } else {
+                Text("No page controls in this mode", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp)
+            }
+        }
+
+        if (repeatCount > 0) {
+            Spacer(Modifier.height(10.dp))
+            Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFFCF3D9), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 10.dp)) {
+                Text("🔁 $repeatCount student(s) asked you to repeat", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF946B00))
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // Mode switch: PDF / Paste Text / Whiteboard
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(Triple(BoardMode.PDF, "📄", "PDF"), Triple(BoardMode.PASTE_TEXT, "📜", "Paste Text"), Triple(BoardMode.WHITEBOARD, "✏️", "Whiteboard")).forEach { (mode, icon, label) ->
+                Box(
+                    modifier = Modifier.weight(1f)
+                        .background(LIVE_NAVY, RoundedCornerShape(100.dp))
+                        .border(if (boardMode == mode) 1.5.dp else 0.dp, LIVE_GOLD, RoundedCornerShape(100.dp))
+                        .clickable { boardMode = mode }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("$icon $label", color = if (boardMode == mode) LIVE_GOLD else Color.White.copy(alpha = 0.85f), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -253,45 +315,52 @@ fun AdminLiveClassCard() {
             }
         }
 
-        Spacer(Modifier.height(12.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(listOf(
-                AnnotationTool.POINTER to "👆", AnnotationTool.MARKER to "✏️", AnnotationTool.HIGHLIGHTER to "🖍️",
-                AnnotationTool.ERASER to "🧹", AnnotationTool.RECTANGLE to "▭", AnnotationTool.CIRCLE to "○",
-                AnnotationTool.LINE to "➖", AnnotationTool.ARROW to "➡️"
-            )) { (t, icon) ->
-                val active = tool == t
-                Box(
-                    modifier = Modifier.background(if (active) LIVE_NAVY else Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
-                        .clickable { tool = t }.padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    Text(icon, fontSize = 16.sp)
+        Spacer(Modifier.height(14.dp))
+
+        // Stylish dark tool row
+        Box(
+            modifier = Modifier.fillMaxWidth()
+                .background(Color.White, RoundedCornerShape(14.dp))
+                .border(1.5.dp, LIVE_GOLD, RoundedCornerShape(14.dp))
+                .padding(10.dp)
+        ) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(listOf(
+                    AnnotationTool.POINTER to "👆", AnnotationTool.MARKER to "✏️", AnnotationTool.HIGHLIGHTER to "🖍️",
+                    AnnotationTool.ERASER to "🧹", AnnotationTool.RECTANGLE to "▭", AnnotationTool.CIRCLE to "○",
+                    AnnotationTool.LINE to "➖", AnnotationTool.ARROW to "➡️"
+                )) { (t, icon) ->
+                    val active = tool == t
+                    Box(
+                        modifier = Modifier.background(if (active) LIVE_NAVY else Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
+                            .clickable { tool = t }.padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) { Text(icon, fontSize = 16.sp) }
                 }
-            }
-            item {
-                Box(
-                    modifier = Modifier.background(Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
-                        .clickable { if (strokes.isNotEmpty()) { redoStack.add(strokes.removeAt(strokes.size - 1)) } }
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) { Text("↩ Undo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A)) }
-            }
-            item {
-                Box(
-                    modifier = Modifier.background(Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
-                        .clickable { if (redoStack.isNotEmpty()) { strokes.add(redoStack.removeAt(redoStack.size - 1)) } }
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) { Text("↪ Redo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A)) }
-            }
-            item {
-                Box(
-                    modifier = Modifier.background(Color(0xFFFBE0DE), RoundedCornerShape(10.dp))
-                        .clickable { strokes.clear(); redoStack.clear() }
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) { Text("🧹 Clear", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC0392B)) }
+                item {
+                    Box(
+                        modifier = Modifier.background(Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
+                            .clickable { if (strokes.isNotEmpty()) { redoStack.add(strokes.removeAt(strokes.size - 1)) } }
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) { Text("↩ Undo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A)) }
+                }
+                item {
+                    Box(
+                        modifier = Modifier.background(Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
+                            .clickable { if (redoStack.isNotEmpty()) { strokes.add(redoStack.removeAt(redoStack.size - 1)) } }
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) { Text("↪ Redo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A)) }
+                }
+                item {
+                    Box(
+                        modifier = Modifier.background(Color(0xFFFBE0DE), RoundedCornerShape(10.dp))
+                            .clickable { strokes.clear(); redoStack.clear() }
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) { Text("🧹 Clear", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC0392B)) }
+                }
             }
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Colour:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5B5F6B))
             TOOL_COLORS.forEach { c ->
