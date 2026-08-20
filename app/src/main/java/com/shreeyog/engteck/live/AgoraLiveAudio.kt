@@ -51,9 +51,11 @@ object AgoraLiveAudio {
             config.mContext = context.applicationContext
             config.mAppId = AGORA_APP_ID
             config.mEventHandler = eventHandler
-            engine = RtcEngine.create(config)
-            engine?.enableAudio()
-            engine?.disableVideo()
+            val created = RtcEngine.create(config)
+                ?: throw IllegalStateException("RtcEngine.create() returned null — SDK failed to initialize.")
+            created.enableAudio()
+            created.disableVideo()
+            engine = created
         }
         return engine!!
     }
@@ -85,12 +87,6 @@ object AgoraLiveAudio {
                 onError?.invoke("TOKEN_FETCH_FAILED")
                 return@launch
             }
-            val eng = ensureEngine(context)
-            val options = ChannelMediaOptions()
-            options.channelProfile = Constants.CHANNEL_PROFILE_LIVE_BROADCASTING
-            options.clientRoleType = if (role == "audience") Constants.CLIENT_ROLE_AUDIENCE else Constants.CLIENT_ROLE_BROADCASTER
-            options.publishMicrophoneTrack = role != "audience"
-            options.autoSubscribeAudio = true
 
             var joinedOrErrored = false
             val originalOnJoined = onJoined
@@ -98,7 +94,30 @@ object AgoraLiveAudio {
             onJoined = { uidResult -> joinedOrErrored = true; originalOnJoined?.invoke(uidResult) }
             onError = { err -> joinedOrErrored = true; originalOnError?.invoke(err) }
 
-            eng.joinChannel(token, fullChannel, uid, options)
+            try {
+                val eng = ensureEngine(context)
+                val options = ChannelMediaOptions()
+                options.channelProfile = Constants.CHANNEL_PROFILE_LIVE_BROADCASTING
+                options.clientRoleType = if (role == "audience") Constants.CLIENT_ROLE_AUDIENCE else Constants.CLIENT_ROLE_BROADCASTER
+                options.publishMicrophoneTrack = role != "audience"
+                options.autoSubscribeAudio = true
+
+                val joinResult = eng.joinChannel(token, fullChannel, uid, options)
+                if (joinResult != 0) {
+                    // joinChannel returned a non-zero error code immediately (synchronous failure) —
+                    // this alone explains a silent hang if we don't check it.
+                    joinedOrErrored = true
+                    onError?.invoke("JOIN_CALL_FAILED (code $joinResult) — engine rejected the join request immediately.")
+                    return@launch
+                }
+            } catch (e: Throwable) {
+                // Catches things like UnsatisfiedLinkError (missing native .so libs),
+                // IllegalStateException, or any other init failure that would
+                // otherwise die silently inside this coroutine.
+                joinedOrErrored = true
+                onError?.invoke("ENGINE_INIT_FAILED: ${e.javaClass.simpleName} — ${e.message}")
+                return@launch
+            }
 
             kotlinx.coroutines.delay(15000)
             if (!joinedOrErrored) {
