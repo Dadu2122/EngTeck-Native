@@ -44,10 +44,6 @@ private val LIVE_NAVY = Color(0xFF0E1420)
 private val LIVE_GOLD = Color(0xFFD4A017)
 private val LIVE_GREEN = Color(0xFF4CD980)
 
-// If a thin gap still shows on either side of the board after this change,
-// increase this value to match the outer screen padding exactly.
-private val BOARD_BLEED = 16.dp
-
 private enum class BoardMode { PDF, PASTE_TEXT, WHITEBOARD }
 
 private val TOOL_COLORS = listOf(
@@ -195,9 +191,7 @@ fun AdminLiveClassCard() {
     }
 
     // ---------- Connected: full dark "Smart Digital Board" layout ----------
-    // Negative horizontal padding here makes the whole board unit bleed to the
-    // screen edges even though the parent screen has its own side padding.
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = -BOARD_BLEED)) {
+    Column(modifier = Modifier.fillMaxWidth()) {
 
         // Dark status strip: S.D. BOARD | Connected: N | ON AIR
         Row(
@@ -322,8 +316,7 @@ fun AdminLiveClassCard() {
             }
         }
 
-        // Everything below this point keeps the screen's normal side padding back.
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = BOARD_BLEED)) {
+        Column(modifier = Modifier.fillMaxWidth()) {
 
             if (repeatCount > 0) {
                 Spacer(Modifier.height(10.dp))
