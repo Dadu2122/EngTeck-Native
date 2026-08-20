@@ -9,7 +9,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.*
@@ -25,12 +24,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntSize
 import com.google.firebase.database.FirebaseDatabase
 import com.shreeyog.engteck.live.AgoraLiveAudio
 import com.shreeyog.engteck.live.AnnotationCanvas
@@ -77,11 +78,12 @@ fun AdminLiveClassCard() {
     val strokes = remember { mutableStateListOf<InkShape>() }
     val redoStack = remember { mutableStateListOf<InkShape>() }
 
-    // Pinch-zoom + pan for the PDF/board area (two-finger only, so it never
-    // fights with single-finger drawing tools).
+    // Two-finger pinch-zoom + pan. Uses Initial pass and only reacts to 2+
+    // pointers, so single-finger tool touches are never intercepted.
     var zoomScale by remember { mutableStateOf(1f) }
     var zoomOffsetX by remember { mutableStateOf(0f) }
     var zoomOffsetY by remember { mutableStateOf(0f) }
+    var boardSizePx by remember { mutableStateOf(IntSize.Zero) }
 
     val pdfPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -218,26 +220,32 @@ fun AdminLiveClassCard() {
             }
         }
 
-        // Big board — edge to edge, gold framed top/bottom only (no side inset)
+        // Big board — two-finger pinch/pan on the outer box (Initial pass, only
+        // reacts to 2+ pointers so single-finger tool touches pass through untouched).
+        // Pan is clamped to the zoomed content's edges so it always stays smooth
+        // and the board never scrolls off past its own boundary.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 460.dp)
                 .background(Color(0xFFFFFDF7))
                 .border(3.dp, LIVE_GOLD)
-                // Two-finger pinch/pan only — leaves single-finger touches free for drawing tools.
-                .pointerInput(boardMode) {
+                .onSizeChanged { boardSizePx = it }
+                .pointerInput(Unit) {
                     awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
                         do {
-                            val event = awaitPointerEvent()
+                            val event = awaitPointerEvent(pass = PointerEventPass.Initial)
                             if (event.changes.size >= 2) {
                                 val zoomChange = event.calculateZoom()
                                 val panChange = event.calculatePan()
                                 zoomScale = (zoomScale * zoomChange).coerceIn(1f, 4f)
-                                zoomOffsetX += panChange.x
-                                zoomOffsetY += panChange.y
-                                event.changes.forEach { if (it.positionChanged()) it.consume() }
+
+                                val maxOffsetX = (boardSizePx.width * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
+                                val maxOffsetY = (boardSizePx.height * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
+                                zoomOffsetX = (zoomOffsetX + panChange.x).coerceIn(-maxOffsetX, maxOffsetX)
+                                zoomOffsetY = (zoomOffsetY + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
+
+                                event.changes.forEach { it.consume() }
                             }
                         } while (event.changes.any { it.pressed })
                     }
@@ -426,48 +434,48 @@ fun AdminLiveClassCard() {
                 ) { Text("⏹ Stop Class", color = Color.White, fontWeight = FontWeight.Bold) }
             }
 
-            // ---- Below Mute/Stop: the actual PDF upload / Paste+Save controls ----
+            // ---- Below Mute/Stop: PDF upload AND Paste+Save always together here,
+            // regardless of which mode the top switcher currently shows. ----
             Spacer(Modifier.height(14.dp))
 
-            if (boardMode == BoardMode.PDF) {
-                Button(
-                    onClick = { pdfPickerLauncher.launch("application/pdf") }, enabled = !uploading,
-                    colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD), shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().height(44.dp)
-                ) {
-                    if (uploading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    else Text(if (slidePdf.isBlank()) "📂 Share PDF Files" else "📂 Change PDF Files", color = Color(0xFF12203D), fontWeight = FontWeight.Bold)
-                }
+            Button(
+                onClick = { pdfPickerLauncher.launch("application/pdf") }, enabled = !uploading,
+                colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD), shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth().height(44.dp)
+            ) {
+                if (uploading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Text(if (slidePdf.isBlank()) "📂 Share PDF Files" else "📂 Change PDF Files", color = Color(0xFF12203D), fontWeight = FontWeight.Bold)
             }
 
-            if (boardMode == BoardMode.PASTE_TEXT) {
-                if (pasteEditing) {
-                    OutlinedTextField(
-                        value = pastedTextDraft, onValueChange = { pastedTextDraft = it },
-                        modifier = Modifier.fillMaxWidth().height(90.dp),
-                        placeholder = { Text("Paste text to show on board...") }
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Button(
-                        onClick = {
-                            pastedText = pastedTextDraft
-                            pasteEditing = false // collapse after saving
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(42.dp)
-                    ) { Text("💾 Save to Board", color = Color(0xFF12203D), fontWeight = FontWeight.Bold) }
-                } else {
-                    Button(
-                        onClick = {
-                            pastedTextDraft = pastedText
-                            pasteEditing = true
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF5F3EC)),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(42.dp)
-                    ) { Text("✏️ Edit Text", color = Color(0xFF12203D), fontWeight = FontWeight.Bold) }
-                }
+            Spacer(Modifier.height(10.dp))
+
+            if (pasteEditing) {
+                OutlinedTextField(
+                    value = pastedTextDraft, onValueChange = { pastedTextDraft = it },
+                    modifier = Modifier.fillMaxWidth().height(90.dp),
+                    placeholder = { Text("Paste text to show on board...") }
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        pastedText = pastedTextDraft
+                        pasteEditing = false // collapse after saving
+                        boardMode = BoardMode.PASTE_TEXT // auto-show it on the board
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(42.dp)
+                ) { Text("💾 Save to Board", color = Color(0xFF12203D), fontWeight = FontWeight.Bold) }
+            } else {
+                Button(
+                    onClick = {
+                        pastedTextDraft = pastedText
+                        pasteEditing = true
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF5F3EC)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(42.dp)
+                ) { Text(if (pastedText.isBlank()) "📜 Paste Text" else "✏️ Edit Text", color = Color(0xFF12203D), fontWeight = FontWeight.Bold) }
             }
 
             if (msg.isNotEmpty()) { Spacer(Modifier.height(10.dp)); Text(msg, fontSize = 12.sp, color = Color(0xFF946B00), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
