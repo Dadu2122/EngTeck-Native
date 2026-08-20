@@ -3,6 +3,7 @@ package com.shreeyog.engteck.live
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -76,7 +77,7 @@ fun AnnotationCanvas(
             )
         }
     ) {
-        strokes.forEach { shape -> drawShape(shape) }
+        strokes.forEach { shape: InkShape -> drawShape(shape) }
 
         val liveEnd = dragCurrent
         if (liveEnd != null) {
