@@ -25,12 +25,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntSize
 import com.google.firebase.database.FirebaseDatabase
-import com.shreeyog.engteck.live.AgoraLiveAudio
+import com.shreeyog.engteck.live.WebAudioBridge
+import com.shreeyog.engteck.live.WebAudioBridgeController
 import com.shreeyog.engteck.live.AnnotationCanvas
 import com.shreeyog.engteck.live.AnnotationTool
 import com.shreeyog.engteck.live.InkShape
@@ -82,6 +84,7 @@ fun AdminLiveClassCard() {
     var zoomOffsetY by remember { mutableStateOf(0f) }
     var boardSizePx by remember { mutableStateOf(IntSize.Zero) }
 
+    val audioBridge = remember { WebAudioBridgeController() }
     val pdfPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             uploading = true
@@ -143,18 +146,19 @@ fun AdminLiveClassCard() {
     fun startClass() {
         starting = true
         msg = "Starting class..."
-        AgoraLiveAudio.onJoined = {
+        audioBridge.onJoined = {
             starting = false; connected = true; msg = ""
             FirebaseDatabase.getInstance().getReference("liveClasses/default/active").setValue(true)
         }
-        AgoraLiveAudio.onUserJoined = { participantCount++ }
-        AgoraLiveAudio.onUserLeft = { if (participantCount > 0) participantCount-- }
-        AgoraLiveAudio.onError = { err -> starting = false; msg = "Could not start: $err" }
-        AgoraLiveAudio.join(context, "default", 1)
+        audioBridge.onUserJoined = { participantCount++ }
+        audioBridge.onUserLeft = { if (participantCount > 0) participantCount-- }
+        audioBridge.onError = { err -> starting = false; msg = "Could not start: $err" }
+        // "ENGLISH_HUB_LIVE_default" matches LIVE_CHANNEL + '_default' in index.html.
+        audioBridge.join("ENGLISH_HUB_LIVE_default", 1, "host")
     }
 
     fun stopClass() {
-        AgoraLiveAudio.leave()
+        audioBridge.leave()
         connected = false; msg = ""; participantCount = 0
         FirebaseDatabase.getInstance().getReference("liveClasses/default/active").setValue(false)
         FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests").removeValue()
@@ -164,6 +168,9 @@ fun AdminLiveClassCard() {
         val clamped = page.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
         FirebaseDatabase.getInstance().getReference("liveClasses/default/currentPage").setValue(clamped)
     }
+
+    // Invisible — just keeps the Agora Web SDK running in the background.
+    WebAudioBridge(audioBridge)
 
     if (!connected) {
         Column(
@@ -217,17 +224,24 @@ fun AdminLiveClassCard() {
             }
         }
 
-        // Big board — no separate gesture layer on this Box anymore; zoom/pan and
-        // tool touches are both handled inside AnnotationCanvas by ONE detector,
-        // so there is nothing left for tool touches to compete with.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(460.dp)
-                .background(Color(0xFFFFFDF7))
-                .border(3.dp, LIVE_GOLD)
-                .onSizeChanged { boardSizePx = it }
-        ) {
+        // Big board — pure white, and stretched to the full screen width even
+        // though the parent screen has its own side padding. BoxWithConstraints
+        // measures the real available width, so the offset needed is calculated
+        // exactly (no guessing, no negative-padding crash risk).
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
+            val extraWidth = (screenWidthDp - maxWidth).coerceAtLeast(0.dp)
+            val bleedOffset = extraWidth / 2
+
+            Box(
+                modifier = Modifier
+                    .width(screenWidthDp)
+                    .offset(x = -bleedOffset)
+                    .height(460.dp)
+                    .background(Color.White)
+                    .border(3.dp, LIVE_GOLD)
+                    .onSizeChanged { boardSizePx = it }
+            ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -275,6 +289,7 @@ fun AdminLiveClassCard() {
                         zoomOffsetY = (zoomOffsetY + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
                     }
                 )
+            }
             }
         }
 
@@ -412,7 +427,7 @@ fun AdminLiveClassCard() {
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
-                    onClick = { muted = !muted; AgoraLiveAudio.setMuted(muted) },
+                    onClick = { muted = !muted; audioBridge.setMuted(muted) },
                     colors = ButtonDefaults.buttonColors(containerColor = if (muted) Color(0xFF8A8F99) else Color(0xFF1B6B79)),
                     shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f)
                 ) { Text(if (muted) "🔇 Unmute" else "🎤 Mute", color = Color.White, fontWeight = FontWeight.Bold) }
