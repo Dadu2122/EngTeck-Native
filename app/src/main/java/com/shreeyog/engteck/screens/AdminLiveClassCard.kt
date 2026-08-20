@@ -31,8 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntSize
 import com.google.firebase.database.FirebaseDatabase
-import com.shreeyog.engteck.live.WebAudioBridge
-import com.shreeyog.engteck.live.WebAudioBridgeController
+import com.shreeyog.engteck.live.AgoraLiveAudio
 import com.shreeyog.engteck.live.AnnotationCanvas
 import com.shreeyog.engteck.live.AnnotationTool
 import com.shreeyog.engteck.live.InkShape
@@ -83,8 +82,6 @@ fun AdminLiveClassCard() {
     var zoomOffsetX by remember { mutableStateOf(0f) }
     var zoomOffsetY by remember { mutableStateOf(0f) }
     var boardSizePx by remember { mutableStateOf(IntSize.Zero) }
-
-    val audioBridge = remember { WebAudioBridgeController() }
     val pdfPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             uploading = true
@@ -146,19 +143,18 @@ fun AdminLiveClassCard() {
     fun startClass() {
         starting = true
         msg = "Starting class..."
-        audioBridge.onJoined = {
+        AgoraLiveAudio.onJoined = {
             starting = false; connected = true; msg = ""
             FirebaseDatabase.getInstance().getReference("liveClasses/default/active").setValue(true)
         }
-        audioBridge.onUserJoined = { participantCount++ }
-        audioBridge.onUserLeft = { if (participantCount > 0) participantCount-- }
-        audioBridge.onError = { err -> starting = false; msg = "Could not start: $err" }
-        // "ENGLISH_HUB_LIVE_default" matches LIVE_CHANNEL + '_default' in index.html.
-        audioBridge.join("ENGLISH_HUB_LIVE_default", 1, "host")
+        AgoraLiveAudio.onUserJoined = { participantCount++ }
+        AgoraLiveAudio.onUserLeft = { if (participantCount > 0) participantCount-- }
+        AgoraLiveAudio.onError = { err -> starting = false; msg = "Could not start: $err" }
+        AgoraLiveAudio.join(context, "default", 1)
     }
 
     fun stopClass() {
-        audioBridge.leave()
+        AgoraLiveAudio.leave()
         connected = false; msg = ""; participantCount = 0
         FirebaseDatabase.getInstance().getReference("liveClasses/default/active").setValue(false)
         FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests").removeValue()
@@ -168,9 +164,6 @@ fun AdminLiveClassCard() {
         val clamped = page.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
         FirebaseDatabase.getInstance().getReference("liveClasses/default/currentPage").setValue(clamped)
     }
-
-    // Invisible — just keeps the Agora Web SDK running in the background.
-    WebAudioBridge(audioBridge)
 
     if (!connected) {
         Column(
@@ -427,7 +420,7 @@ fun AdminLiveClassCard() {
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
-                    onClick = { muted = !muted; audioBridge.setMuted(muted) },
+                    onClick = { muted = !muted; AgoraLiveAudio.setMuted(muted) },
                     colors = ButtonDefaults.buttonColors(containerColor = if (muted) Color(0xFF8A8F99) else Color(0xFF1B6B79)),
                     shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f)
                 ) { Text(if (muted) "🔇 Unmute" else "🎤 Mute", color = Color.White, fontWeight = FontWeight.Bold) }
