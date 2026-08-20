@@ -1,5 +1,9 @@
 package com.shreeyog.engteck.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -9,18 +13,70 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.database.FirebaseDatabase
+import com.shreeyog.engteck.live.AgoraLiveAudio
 
 @Composable
 fun LiveClassJoinCard() {
+    val context = LocalContext.current
     var isLive by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var mobile by remember { mutableStateOf("") }
     var joinMsg by remember { mutableStateOf("") }
+    var joining by remember { mutableStateOf(false) }
+    var joined by remember { mutableStateOf(false) }
+    var muted by remember { mutableStateOf(false) }
+
+    fun doJoin() {
+        joining = true
+        joinMsg = "Connecting to live class..."
+        val uid = (mobile.ifBlank { "0" }).takeLast(6).toIntOrNull() ?: (1000..999999).random()
+        AgoraLiveAudio.onJoined = {
+            joining = false
+            joined = true
+            joinMsg = "Connected — you can hear the teacher now."
+        }
+        AgoraLiveAudio.onError = { err ->
+            joining = false
+            joinMsg = "Could not connect: $err — please try again."
+        }
+        AgoraLiveAudio.join(context, "default", uid)
+    }
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) doJoin()
+        else joinMsg = "Mic permission is needed to join the live class."
+    }
+
+    fun startJoinFlow() {
+        if (name.isBlank() || mobile.length != 10) {
+            joinMsg = "Please enter your name and a 10-digit mobile number"
+            return
+        }
+        if (!isLive) {
+            joinMsg = "Class is not live right now — please wait for the teacher to start"
+            return
+        }
+        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (hasPermission) doJoin() else micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (joined) AgoraLiveAudio.leave()
+            AgoraLiveAudio.onJoined = null
+            AgoraLiveAudio.onError = null
+        }
+    }
 
     LaunchedEffect(Unit) {
         FirebaseDatabase.getInstance().getReference("liveClasses/default/active")
@@ -71,59 +127,86 @@ fun LiveClassJoinCard() {
                 )
             }
             Spacer(Modifier.height(14.dp))
-            Text(
-                "Join to hear the teacher live and follow along with shared slides. You can raise your hand any time to ask something.",
-                fontSize = 12.5.sp,
-                color = Color(0xFF5B5F6B),
-                textAlign = TextAlign.Center,
-                lineHeight = 18.sp
-            )
-            Spacer(Modifier.height(16.dp))
 
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text("Your Name *", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
+            if (!joined) {
+                Text(
+                    "Join to hear the teacher live and follow along with shared slides. You can raise your hand any time to ask something.",
+                    fontSize = 12.5.sp,
+                    color = Color(0xFF5B5F6B),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 18.sp
                 )
-                Spacer(Modifier.height(14.dp))
-                Text("Your Registered Mobile Number *", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = mobile,
-                    onValueChange = { if (it.length <= 10) mobile = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone
+                Spacer(Modifier.height(16.dp))
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("Your Name *", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        enabled = !joining
                     )
-                )
+                    Spacer(Modifier.height(14.dp))
+                    Text("Your Registered Mobile Number *", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = mobile,
+                        onValueChange = { if (it.length <= 10) mobile = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        enabled = !joining,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone
+                        )
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = { startJoinFlow() },
+                    enabled = !joining,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE85D4C)),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    if (joining) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Join Live Class", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            } else {
+                Text("🔊 You're connected", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F7A3D))
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = {
+                            muted = !muted
+                            AgoraLiveAudio.setMuted(muted)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (muted) Color(0xFF8A8F99) else Color(0xFF1B6B79)),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text(if (muted) "🔇 Unmute" else "🎤 Mute", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = {
+                            AgoraLiveAudio.leave()
+                            joined = false
+                            joinMsg = ""
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC0392B)),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text("Leave Class", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
 
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    if (name.isBlank() || mobile.length != 10) {
-                        joinMsg = "Please enter your name and a 10-digit mobile number"
-                        return@Button
-                    }
-                    if (!isLive) {
-                        joinMsg = "Class is not live right now — please wait for the teacher to start"
-                        return@Button
-                    }
-                    joinMsg = "Sending join request... (Live video system coming soon)"
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE85D4C)),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().height(48.dp)
-            ) {
-                Text("Join Live Class", fontWeight = FontWeight.Bold, color = Color.White)
-            }
             if (joinMsg.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp))
                 Text(joinMsg, fontSize = 12.sp, color = Color(0xFF946B00), textAlign = TextAlign.Center)
