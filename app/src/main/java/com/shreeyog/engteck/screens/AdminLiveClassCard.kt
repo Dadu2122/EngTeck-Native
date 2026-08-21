@@ -286,10 +286,7 @@ fun AdminLiveClassCard() {
         // stretches to the actual screen edge regardless of nesting — no guessed
         // padding constant, no gap. White fills edge-to-edge (no dark frame/inset
         // margin anymore), and taller (640dp) to show more of the PDF at once.
-        val screenWidthPx = androidx.compose.ui.platform.LocalView.current.let {
-            it.rootView.width.takeIf { w -> w > 0 } ?: androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
-        }
-        val screenWidthDp = with(density) { screenWidthPx.toFloat().toDp() }
+        val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
         val leftInsetDp = with(density) { leftInset.toDp() }
         Box(
             modifier = Modifier
