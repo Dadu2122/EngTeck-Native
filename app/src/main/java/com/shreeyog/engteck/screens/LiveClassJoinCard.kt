@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -39,6 +40,10 @@ import kotlinx.coroutines.withContext
 private val SLIVE_NAVY = Color(0xFF0E1420)
 private val SLIVE_GOLD = Color(0xFFD4A017)
 private val SLIVE_GREEN = Color(0xFF4CD980)
+
+// This screen's own outer Column uses padding(horizontal = 22.dp) below — used to
+// bleed the board edge-to-edge via offset() (safe; padding() rejects negative values).
+private val SCREEN_SIDE_PADDING = 22.dp
 
 // Same gently-pulsing dot as the teacher's board.
 @Composable
@@ -296,12 +301,17 @@ fun LiveClassJoinCard() {
                     }
                 }
 
+                // Full-bleed board: uses offset() (not negative padding — that crashes)
+                // to escape this screen's own 22.dp side padding and stretch edge-to-edge.
+                // Border switched from thick gold to a thin black line, matching the teacher's board.
+                val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .width(screenWidthDp)
+                        .offset(x = -SCREEN_SIDE_PADDING)
                         .height(460.dp)
                         .background(Color.White)
-                        .border(3.dp, SLIVE_GOLD)
+                        .border(0.75.dp, Color.Black)
                 ) {
                     if (slideBitmap != null) {
                         Image(
