@@ -333,10 +333,7 @@ fun LiveClassJoinCard() {
                 // True full-bleed white board: uses the SAME real-measured offset
                 // as the status strip above (leftInset) so it stretches to the
                 // actual screen edge regardless of nesting. Taller (640dp) too.
-                val screenWidthPx = androidx.compose.ui.platform.LocalView.current.let {
-                    it.rootView.width.takeIf { w -> w > 0 } ?: androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
-                }
-                val screenWidthDp = with(density) { screenWidthPx.toFloat().toDp() }
+                val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
                 val leftInsetDp = with(density) { leftInset.toDp() }
                 Box(
                     modifier = Modifier
