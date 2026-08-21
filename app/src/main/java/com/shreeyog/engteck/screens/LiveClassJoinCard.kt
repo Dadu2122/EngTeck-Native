@@ -37,9 +37,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 // Same palette as the teacher's board (AdminLiveClassCard.kt) so both sides look identical.
-private val SLIVE_NAVY = Color(0xFF0E1420)
+private val SLIVE_NAVY = Color(0xFF070A12)
+private val SLIVE_BOARD_TOP = Color(0xFF12162A)
+private val SLIVE_BOARD_BOTTOM = Color(0xFF0A0D1A)
 private val SLIVE_GOLD = Color(0xFFD4A017)
-private val SLIVE_GREEN = Color(0xFF4CD980)
+private val SLIVE_GREEN = Color(0xFF39FF9E)
 
 // This screen's own outer Column uses padding(horizontal = 22.dp) below — used to
 // bleed the board edge-to-edge via offset() (safe; padding() rejects negative values).
@@ -59,6 +61,28 @@ private fun StudentBlinkingDot(color: Color, size: androidx.compose.ui.unit.Dp =
         label = "studentLiveDotAlpha"
     )
     Box(Modifier.size(size).background(color.copy(alpha = alpha), CircleShape))
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.StudentCornerBracket(alignment: Alignment) {
+    val len = 22.dp
+    val thick = 2.dp
+    val isTop = alignment == Alignment.TopStart || alignment == Alignment.TopEnd
+    val isStart = alignment == Alignment.TopStart || alignment == Alignment.BottomStart
+    Box(
+        modifier = Modifier
+            .align(alignment)
+            .padding(
+                start = if (isStart) 14.dp else 0.dp,
+                end = if (!isStart) 14.dp else 0.dp,
+                top = if (isTop) 14.dp else 0.dp,
+                bottom = if (!isTop) 14.dp else 0.dp
+            )
+            .size(len)
+    ) {
+        Box(Modifier.align(if (isTop) Alignment.TopStart else Alignment.BottomStart).width(len).height(thick).background(SLIVE_GOLD.copy(alpha = 0.75f)))
+        Box(Modifier.align(if (isStart) Alignment.TopStart else Alignment.TopEnd).width(thick).height(len).background(SLIVE_GOLD.copy(alpha = 0.75f)))
+    }
 }
 
 @Composable
@@ -278,26 +302,26 @@ fun LiveClassJoinCard() {
             Column(modifier = Modifier.fillMaxWidth()) {
 
                 Row(
-                    modifier = Modifier.fillMaxWidth().background(SLIVE_NAVY).padding(horizontal = 14.dp, vertical = 10.dp),
+                    modifier = Modifier.fillMaxWidth().background(SLIVE_NAVY).padding(horizontal = 14.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         StudentBlinkingDot(SLIVE_GREEN)
-                        Spacer(Modifier.width(6.dp))
-                        Text("S.D. BOARD", color = Color.White.copy(alpha = 0.85f), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(7.dp))
+                        Text("S.D.BOARD", color = Color.White.copy(alpha = 0.9f), fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, letterSpacing = 1.5.sp)
                     }
                     Box(
-                        modifier = Modifier.background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(100.dp))
-                            .border(1.dp, SLIVE_GOLD.copy(alpha = 0.6f), RoundedCornerShape(100.dp))
+                        modifier = Modifier.background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(100.dp))
+                            .border(1.dp, SLIVE_GOLD.copy(alpha = 0.5f), RoundedCornerShape(100.dp))
                             .padding(horizontal = 14.dp, vertical = 5.dp)
                     ) {
-                        Text("Connected: $participantCount", color = SLIVE_GOLD, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("Connected: $participantCount", color = SLIVE_GOLD, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         StudentBlinkingDot(SLIVE_GREEN)
-                        Spacer(Modifier.width(6.dp))
-                        Text("ON AIR", color = SLIVE_GREEN, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(7.dp))
+                        Text("ON_AIR", color = SLIVE_GREEN, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, letterSpacing = 1.sp)
                     }
                 }
 
@@ -310,23 +334,28 @@ fun LiveClassJoinCard() {
                         .width(screenWidthDp)
                         .offset(x = -SCREEN_SIDE_PADDING)
                         .height(460.dp)
-                        .background(Color.White)
-                        .border(0.75.dp, Color.Black)
+                        .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(SLIVE_BOARD_TOP, SLIVE_BOARD_BOTTOM)))
                 ) {
+                    Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(1.dp).background(SLIVE_GOLD.copy(alpha = 0.35f)))
+                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(1.dp).background(SLIVE_GOLD.copy(alpha = 0.35f)))
+                    StudentCornerBracket(Alignment.TopStart)
+                    StudentCornerBracket(Alignment.TopEnd)
+                    StudentCornerBracket(Alignment.BottomStart)
+                    StudentCornerBracket(Alignment.BottomEnd)
                     if (slideBitmap != null) {
                         Image(
                             bitmap = slideBitmap!!.asImageBitmap(),
                             contentDescription = "Slide",
                             contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize().padding(24.dp)
                         )
                     } else if (slidePdf.isNotBlank()) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = SLIVE_NAVY)
+                            CircularProgressIndicator(color = SLIVE_GOLD)
                         }
                     } else {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("🔊 You're connected", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F7A3D))
+                            Text("🔊 YOU'RE CONNECTED", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SLIVE_GREEN, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, letterSpacing = 1.sp)
                         }
                     }
                 }
