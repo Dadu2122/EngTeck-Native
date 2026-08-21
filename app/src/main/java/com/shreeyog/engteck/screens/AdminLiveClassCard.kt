@@ -49,6 +49,11 @@ private val LIVE_NAVY = Color(0xFF0E1420)
 private val LIVE_GOLD = Color(0xFFD4A017)
 private val LIVE_GREEN = Color(0xFF4CD980)
 
+// Side padding of the parent screen this card sits in — used to make the board
+// bleed edge-to-edge via offset() (which allows negative values safely, unlike
+// padding() which crashes on negative numbers).
+private val SCREEN_SIDE_PADDING = 16.dp
+
 private enum class BoardMode { PDF, PASTE_TEXT, WHITEBOARD }
 
 private val TOOL_COLORS = listOf(
@@ -240,14 +245,17 @@ fun AdminLiveClassCard() {
             }
         }
 
-        // Big board — pure white. Width kept simple (fillMaxWidth) after the
-        // earlier full-bleed offset trick broke the layout — reverted for safety.
+        // Full-bleed board: uses offset() (not negative padding — that crashes)
+        // to escape the screen's own side padding and stretch edge-to-edge.
+        // Border switched from thick gold to a thin black line per request.
+        val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
         Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .width(screenWidthDp)
+                .offset(x = -SCREEN_SIDE_PADDING)
                 .height(460.dp)
                 .background(Color.White)
-                .border(3.dp, LIVE_GOLD)
+                .border(0.75.dp, Color.Black)
                 .onSizeChanged { boardSizePx = it }
         ) {
             Box(
