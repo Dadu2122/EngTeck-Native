@@ -305,9 +305,13 @@ fun LiveClassJoinCard() {
 
                 val density = androidx.compose.ui.platform.LocalDensity.current
                 var leftInset by remember { mutableStateOf(0f) }
+                var rowWidthPx by remember { mutableStateOf(0f) }
                 Row(
                     modifier = Modifier.fillMaxWidth().background(SLIVE_NAVY).padding(horizontal = 14.dp, vertical = 12.dp)
-                        .onGloballyPositioned { leftInset = it.positionInWindow().x },
+                        .onGloballyPositioned {
+                            leftInset = it.positionInWindow().x
+                            rowWidthPx = it.size.width.toFloat()
+                        },
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -330,14 +334,14 @@ fun LiveClassJoinCard() {
                     }
                 }
 
-                // True full-bleed white board: uses the SAME real-measured offset
-                // as the status strip above (leftInset) so it stretches to the
-                // actual screen edge regardless of nesting. Taller (640dp) too.
-                val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
+                // True full-bleed white board: width = leftInset + row's own
+                // measured width + leftInset again — entirely self-measured,
+                // no screen-width guess of any kind.
                 val leftInsetDp = with(density) { leftInset.toDp() }
+                val fullBleedWidthDp = with(density) { (rowWidthPx + 2 * leftInset).toDp() }
                 Box(
                     modifier = Modifier
-                        .width(screenWidthDp)
+                        .width(fullBleedWidthDp)
                         .offset(x = -leftInsetDp)
                         .height(640.dp)
                         .background(Color.White)
