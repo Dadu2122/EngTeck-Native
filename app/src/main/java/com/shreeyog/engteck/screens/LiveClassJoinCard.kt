@@ -24,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -301,8 +303,11 @@ fun LiveClassJoinCard() {
             // ---------- Joined: same "Smart Digital Board" look as the teacher's screen ----------
             Column(modifier = Modifier.fillMaxWidth()) {
 
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                var leftInset by remember { mutableStateOf(0f) }
                 Row(
-                    modifier = Modifier.fillMaxWidth().background(SLIVE_NAVY).padding(horizontal = 14.dp, vertical = 12.dp),
+                    modifier = Modifier.fillMaxWidth().background(SLIVE_NAVY).padding(horizontal = 14.dp, vertical = 12.dp)
+                        .onGloballyPositioned { leftInset = it.positionInWindow().x },
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -325,37 +330,41 @@ fun LiveClassJoinCard() {
                     }
                 }
 
-                // Full-bleed board: uses offset() (not negative padding — that crashes)
-                // to escape this screen's own 22.dp side padding and stretch edge-to-edge.
-                // Thin black border, matching the teacher's board.
-                val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
+                // Dark navy frame at comfortable width (no full-bleed offset trick),
+                // white inset PDF card — matches the website's proven board layout
+                // exactly, and stays readable no matter what colours the PDF uses.
                 Box(
                     modifier = Modifier
-                        .width(screenWidthDp)
-                        .offset(x = -SCREEN_SIDE_PADDING)
+                        .fillMaxWidth()
                         .height(460.dp)
                         .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(SLIVE_BOARD_TOP, SLIVE_BOARD_BOTTOM)))
+                        .padding(14.dp)
                 ) {
-                    Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(1.dp).background(SLIVE_GOLD.copy(alpha = 0.35f)))
-                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(1.dp).background(SLIVE_GOLD.copy(alpha = 0.35f)))
                     StudentCornerBracket(Alignment.TopStart)
                     StudentCornerBracket(Alignment.TopEnd)
                     StudentCornerBracket(Alignment.BottomStart)
                     StudentCornerBracket(Alignment.BottomEnd)
-                    if (slideBitmap != null) {
-                        Image(
-                            bitmap = slideBitmap!!.asImageBitmap(),
-                            contentDescription = "Slide",
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize().padding(24.dp)
-                        )
-                    } else if (slidePdf.isNotBlank()) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = SLIVE_GOLD)
-                        }
-                    } else {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("🔊 YOU'RE CONNECTED", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SLIVE_GREEN, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, letterSpacing = 1.sp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.White, RoundedCornerShape(10.dp))
+                            .border(1.dp, SLIVE_GOLD.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                    ) {
+                        if (slideBitmap != null) {
+                            Image(
+                                bitmap = slideBitmap!!.asImageBitmap(),
+                                contentDescription = "Slide",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else if (slidePdf.isNotBlank()) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = SLIVE_NAVY)
+                            }
+                        } else {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("🔊 You're connected", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F7A3D))
+                            }
                         }
                     }
                 }
@@ -405,3 +414,4 @@ fun LiveClassJoinCard() {
         }
     }
 }
+
