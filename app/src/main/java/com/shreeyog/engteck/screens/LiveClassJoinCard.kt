@@ -330,41 +330,36 @@ fun LiveClassJoinCard() {
                     }
                 }
 
-                // Dark navy frame at comfortable width (no full-bleed offset trick),
-                // white inset PDF card — matches the website's proven board layout
-                // exactly, and stays readable no matter what colours the PDF uses.
+                // True full-bleed white board: uses the SAME real-measured offset
+                // as the status strip above (leftInset) so it stretches to the
+                // actual screen edge regardless of nesting. Taller (640dp) too.
+                val screenWidthPx = androidx.compose.ui.platform.LocalView.current.let {
+                    it.rootView.width.takeIf { w -> w > 0 } ?: androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+                }
+                val screenWidthDp = with(density) { screenWidthPx.toFloat().toDp() }
+                val leftInsetDp = with(density) { leftInset.toDp() }
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(460.dp)
-                        .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(SLIVE_BOARD_TOP, SLIVE_BOARD_BOTTOM)))
-                        .padding(14.dp)
+                        .width(screenWidthDp)
+                        .offset(x = -leftInsetDp)
+                        .height(640.dp)
+                        .background(Color.White)
+                        .border(0.75.dp, Color.Black)
                 ) {
-                    StudentCornerBracket(Alignment.TopStart)
-                    StudentCornerBracket(Alignment.TopEnd)
-                    StudentCornerBracket(Alignment.BottomStart)
-                    StudentCornerBracket(Alignment.BottomEnd)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.White, RoundedCornerShape(10.dp))
-                            .border(1.dp, SLIVE_GOLD.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-                    ) {
-                        if (slideBitmap != null) {
-                            Image(
-                                bitmap = slideBitmap!!.asImageBitmap(),
-                                contentDescription = "Slide",
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else if (slidePdf.isNotBlank()) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = SLIVE_NAVY)
-                            }
-                        } else {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("🔊 You're connected", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F7A3D))
-                            }
+                    if (slideBitmap != null) {
+                        Image(
+                            bitmap = slideBitmap!!.asImageBitmap(),
+                            contentDescription = "Slide",
+                            contentScale = ContentScale.FillBounds,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else if (slidePdf.isNotBlank()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = SLIVE_NAVY)
+                        }
+                    } else {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("🔊 You're connected", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F7A3D))
                         }
                     }
                 }
@@ -414,4 +409,3 @@ fun LiveClassJoinCard() {
         }
     }
 }
-
