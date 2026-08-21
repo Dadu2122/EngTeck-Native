@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -247,9 +249,16 @@ fun AdminLiveClassCard() {
     // ---------- Connected: full dark "Smart Digital Board" layout ----------
     Column(modifier = Modifier.fillMaxWidth()) {
 
-        // Dark status strip: S.D.BOARD | Connected: N | ON_AIR — monospace labels
+        // Dark status strip: S.D.BOARD | Connected: N | ON_AIR — monospace labels.
+        // Also measures its own distance from the true screen edge, so the board
+        // below can offset by the EXACT real amount (not a guessed constant) —
+        // fixes the right-side gap that happened when this card is nested inside
+        // extra padding we didn't know about.
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        var leftInset by remember { mutableStateOf(0f) }
         Row(
-            modifier = Modifier.fillMaxWidth().background(LIVE_NAVY).padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth().background(LIVE_NAVY).padding(horizontal = 14.dp, vertical = 12.dp)
+                .onGloballyPositioned { leftInset = it.positionInWindow().x },
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -272,21 +281,19 @@ fun AdminLiveClassCard() {
             }
         }
 
-        // Full-bleed board: uses offset() (not negative padding — that crashes)
-        // to escape the screen's own side padding and stretch edge-to-edge.
-        // Command Deck look: dark gradient, thin gold top/bottom hairline, glowing corner brackets.
-        val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
+        // Dark navy frame at comfortable width (no full-bleed offset trick —
+        // that kept causing gap/nesting bugs). Inside it, a white PDF card sits
+        // inset with real padding, exactly like the website's board: content
+        // stays centred, proportional, and always readable regardless of the
+        // PDF's own text colours (white background = safe for any content).
         Box(
             modifier = Modifier
-                .width(screenWidthDp)
-                .offset(x = -SCREEN_SIDE_PADDING)
+                .fillMaxWidth()
                 .height(460.dp)
                 .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(LIVE_BOARD_TOP, LIVE_BOARD_BOTTOM)))
-                .border(0.dp, Color.Transparent)
+                .padding(14.dp)
                 .onSizeChanged { boardSizePx = it }
         ) {
-            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(1.dp).background(LIVE_GOLD.copy(alpha = 0.35f)))
-            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(1.dp).background(LIVE_GOLD.copy(alpha = 0.35f)))
             CornerBracket(Alignment.TopStart)
             CornerBracket(Alignment.TopEnd)
             CornerBracket(Alignment.BottomStart)
@@ -294,7 +301,9 @@ fun AdminLiveClassCard() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 24.dp, vertical = 30.dp)
+                    .background(Color.White, RoundedCornerShape(10.dp))
+                    .border(1.dp, LIVE_GOLD.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                    .padding(if (boardMode == BoardMode.PDF) 0.dp else 20.dp)
                     .graphicsLayer(
                         scaleX = zoomScale, scaleY = zoomScale,
                         translationX = zoomOffsetX, translationY = zoomOffsetY
@@ -306,7 +315,7 @@ fun AdminLiveClassCard() {
                             Image(bitmap = slideBitmap!!.asImageBitmap(), contentDescription = "Slide", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                         } else {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(if (slidePdf.isBlank()) "No PDF shared yet." else "Loading...", fontSize = 12.sp, color = Color(0xFF8A8F99), fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                                Text(if (slidePdf.isBlank()) "No PDF shared yet." else "Loading...", fontSize = 12.sp, color = Color(0xFF8A8F99))
                             }
                         }
                     }
@@ -316,9 +325,7 @@ fun AdminLiveClassCard() {
                                 .fillMaxSize()
                                 .verticalScroll(rememberScrollState())
                         ) {
-                            Text("TOPIC", fontSize = 11.sp, color = LIVE_GOLD, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(14.dp))
-                            Text(pastedText.ifBlank { "Paste text below to show it here." }, fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold, lineHeight = 22.sp)
+                            Text(pastedText.ifBlank { "Paste text below to show it here." }, fontSize = 15.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp)
                         }
                     }
                     BoardMode.WHITEBOARD -> {
