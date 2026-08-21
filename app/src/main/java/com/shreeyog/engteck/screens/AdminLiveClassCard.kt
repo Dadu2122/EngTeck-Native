@@ -250,15 +250,20 @@ fun AdminLiveClassCard() {
     Column(modifier = Modifier.fillMaxWidth()) {
 
         // Dark status strip: S.D.BOARD | Connected: N | ON_AIR — monospace labels.
-        // Also measures its own distance from the true screen edge, so the board
-        // below can offset by the EXACT real amount (not a guessed constant) —
-        // fixes the right-side gap that happened when this card is nested inside
-        // extra padding we didn't know about.
+        // Measures its own left position AND its own width, so the board below
+        // can compute the true full-bleed width (leftInset + this row's width +
+        // leftInset again, assuming equal left/right padding — true throughout
+        // this app) instead of guessing from device/config screen width, which
+        // kept mismatching the real rendered width and leaving a gap.
         val density = androidx.compose.ui.platform.LocalDensity.current
         var leftInset by remember { mutableStateOf(0f) }
+        var rowWidthPx by remember { mutableStateOf(0f) }
         Row(
             modifier = Modifier.fillMaxWidth().background(LIVE_NAVY).padding(horizontal = 14.dp, vertical = 12.dp)
-                .onGloballyPositioned { leftInset = it.positionInWindow().x },
+                .onGloballyPositioned {
+                    leftInset = it.positionInWindow().x
+                    rowWidthPx = it.size.width.toFloat()
+                },
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -281,16 +286,14 @@ fun AdminLiveClassCard() {
             }
         }
 
-        // True full-bleed white board: uses the SAME real-measured offset as the
-        // status strip above (leftInset, captured via onGloballyPositioned) so it
-        // stretches to the actual screen edge regardless of nesting — no guessed
-        // padding constant, no gap. White fills edge-to-edge (no dark frame/inset
-        // margin anymore), and taller (640dp) to show more of the PDF at once.
-        val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
+        // True full-bleed white board: width = leftInset + row's own measured
+        // width + leftInset (mirrors the same gap on the right), offset by
+        // -leftInset. Entirely self-measured — no screen-width guess of any kind.
         val leftInsetDp = with(density) { leftInset.toDp() }
+        val fullBleedWidthDp = with(density) { (rowWidthPx + 2 * leftInset).toDp() }
         Box(
             modifier = Modifier
-                .width(screenWidthDp)
+                .width(fullBleedWidthDp)
                 .offset(x = -leftInsetDp)
                 .height(640.dp)
                 .background(Color.White)
