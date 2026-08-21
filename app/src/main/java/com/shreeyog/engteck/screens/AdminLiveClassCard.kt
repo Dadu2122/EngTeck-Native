@@ -245,201 +245,34 @@ fun AdminLiveClassCard() {
             }
         }
 
-        // Full-bleed board: uses offset() (not negative padding — that crashes)
-        // to escape the screen's own side padding and stretch edge-to-edge.
-        // Border switched from thick gold to a thin black line per request.
-        val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
-        Box(
+        // Board is now the real website board, loaded in a WebView — same
+        // full-bleed layout, same annotation tools, same PDF rendering as
+        // index.html, since it IS index.html. Native audio (Agora) below
+        // keeps working independently; this only replaces the visual board.
+        // ?embed=board hides the site's header/join-form and forces the
+        // board visible — pure CSS-level, doesn't touch the site's audio JS.
+        com.shreeyog.engteck.live.LiveClassBoardWebView(
+            url = "https://dadu2122.github.io/Shree-English-Classes/?embed=board#liveClassSection",
             modifier = Modifier
-                .width(screenWidthDp)
-                .offset(x = -SCREEN_SIDE_PADDING)
+                .fillMaxWidth()
                 .height(460.dp)
                 .background(Color.White)
                 .border(0.75.dp, Color.Black)
-                .onSizeChanged { boardSizePx = it }
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer(
-                        scaleX = zoomScale, scaleY = zoomScale,
-                        translationX = zoomOffsetX, translationY = zoomOffsetY
-                    )
-            ) {
-                when (boardMode) {
-                    BoardMode.PDF -> {
-                        if (slideBitmap != null) {
-                            Image(bitmap = slideBitmap!!.asImageBitmap(), contentDescription = "Slide", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
-                        } else {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(if (slidePdf.isBlank()) "No PDF shared yet." else "Loading...", fontSize = 12.sp, color = Color(0xFF8A8F99))
-                            }
-                        }
-                    }
-                    BoardMode.PASTE_TEXT -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(20.dp)
-                        ) {
-                            Text(pastedText.ifBlank { "Paste text below to show it here." }, fontSize = 15.sp, color = Color(0xFF1A1A1A))
-                        }
-                    }
-                    BoardMode.WHITEBOARD -> {
-                        Box(Modifier.fillMaxSize())
-                    }
-                }
-                AnnotationCanvas(
-                    modifier = Modifier.fillMaxSize(),
-                    tool = tool, color = penColor, penWidth = penWidth,
-                    strokes = strokes, redoStack = redoStack,
-                    swipeEnabled = boardMode == BoardMode.PDF,
-                    onSwipeLeft = { if (currentPage < pageCount - 1) goToPage(currentPage + 1) },
-                    onSwipeRight = { if (currentPage > 0) goToPage(currentPage - 1) },
-                    onZoomPan = { zoomChange, panChange ->
-                        zoomScale = (zoomScale * zoomChange).coerceIn(1f, 4f)
-                        val maxOffsetX = (boardSizePx.width * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
-                        val maxOffsetY = (boardSizePx.height * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
-                        zoomOffsetX = (zoomOffsetX + panChange.x).coerceIn(-maxOffsetX, maxOffsetX)
-                        zoomOffsetY = (zoomOffsetY + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
-                    }
-                )
-            }
-        }
+        )
 
-        // Dark page-nav strip under the board
-        Row(
-            modifier = Modifier.fillMaxWidth().background(LIVE_NAVY).padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (boardMode == BoardMode.PDF && pageCount > 0) {
-                Box(
-                    modifier = Modifier.background(Color.Transparent, RoundedCornerShape(10.dp))
-                        .border(1.5.dp, LIVE_GOLD, RoundedCornerShape(10.dp))
-                        .clickable(enabled = currentPage > 0) { goToPage(currentPage - 1) }
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) { Text("‹", color = LIVE_GOLD, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
-                Spacer(Modifier.width(10.dp))
-                Box(modifier = Modifier.background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp)) {
-                    Text("${currentPage + 1}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.width(6.dp))
-                Text("/", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
-                Spacer(Modifier.width(6.dp))
-                Box(modifier = Modifier.background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp)) {
-                    Text("$pageCount", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.width(10.dp))
-                Box(
-                    modifier = Modifier.background(Color.Transparent, RoundedCornerShape(10.dp))
-                        .border(1.5.dp, LIVE_GOLD, RoundedCornerShape(10.dp))
-                        .clickable(enabled = currentPage < pageCount - 1) { goToPage(currentPage + 1) }
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) { Text("›", color = LIVE_GOLD, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
-            } else {
-                Text("No page controls in this mode", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp)
-            }
-        }
-
-        Column(modifier = Modifier.fillMaxWidth()) {
+        // Everything below (page-nav, mode switch, annotation tools, colour,
+        // pen width, PDF upload, paste-text box) is removed here — the
+        // WebView board above already contains all of that, since it's the
+        // real website UI. Only native audio controls (Mute/Stop) remain.
+        Column(modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) {
 
             if (repeatCount > 0) {
-                Spacer(Modifier.height(10.dp))
                 Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFFCF3D9), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 10.dp)) {
                     Text("🔁 $repeatCount student(s) asked you to repeat", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF946B00))
                 }
+                Spacer(Modifier.height(12.dp))
             }
 
-            Spacer(Modifier.height(12.dp))
-
-            // Mode switch: PDF / Paste Text / Whiteboard — ONLY switches, does nothing else.
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(Triple(BoardMode.PDF, "📄", "PDF"), Triple(BoardMode.PASTE_TEXT, "📜", "Paste Text"), Triple(BoardMode.WHITEBOARD, "✏️", "Whiteboard")).forEach { (mode, icon, label) ->
-                    Box(
-                        modifier = Modifier.weight(1f)
-                            .background(LIVE_NAVY, RoundedCornerShape(100.dp))
-                            .border(if (boardMode == mode) 1.5.dp else 0.dp, LIVE_GOLD, RoundedCornerShape(100.dp))
-                            .clickable {
-                                boardMode = mode
-                                if (mode == BoardMode.PASTE_TEXT && pastedText.isBlank()) pasteEditing = true
-                            }
-                            .padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("$icon $label", color = if (boardMode == mode) LIVE_GOLD else Color.White.copy(alpha = 0.85f), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(14.dp))
-
-            // Stylish dark tool row
-            Box(
-                modifier = Modifier.fillMaxWidth()
-                    .background(Color.White, RoundedCornerShape(14.dp))
-                    .border(1.5.dp, LIVE_GOLD, RoundedCornerShape(14.dp))
-                    .padding(10.dp)
-            ) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(listOf(
-                        AnnotationTool.POINTER to "👆", AnnotationTool.MOVE to "✋", AnnotationTool.MARKER to "✏️", AnnotationTool.HIGHLIGHTER to "🖍️",
-                        AnnotationTool.ERASER to "🧹", AnnotationTool.RECTANGLE to "▭", AnnotationTool.CIRCLE to "○",
-                        AnnotationTool.LINE to "➖", AnnotationTool.ARROW to "➡️"
-                    )) { (t, icon) ->
-                        val active = tool == t
-                        Box(
-                            modifier = Modifier.background(if (active) LIVE_NAVY else Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
-                                .clickable { tool = t }.padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) { Text(icon, fontSize = 16.sp) }
-                    }
-                    item {
-                        Box(
-                            modifier = Modifier.background(Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
-                                .clickable { if (strokes.isNotEmpty()) { redoStack.add(strokes.removeAt(strokes.size - 1)) } }
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) { Text("↩ Undo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A)) }
-                    }
-                    item {
-                        Box(
-                            modifier = Modifier.background(Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
-                                .clickable { if (redoStack.isNotEmpty()) { strokes.add(redoStack.removeAt(redoStack.size - 1)) } }
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) { Text("↪ Redo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A)) }
-                    }
-                    item {
-                        Box(
-                            modifier = Modifier.background(Color(0xFFFBE0DE), RoundedCornerShape(10.dp))
-                                .clickable { strokes.clear(); redoStack.clear() }
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) { Text("🧹 Clear", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC0392B)) }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Colour:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5B5F6B))
-                TOOL_COLORS.forEach { c ->
-                    Box(
-                        modifier = Modifier.size(28.dp).background(c, CircleShape)
-                            .border(if (penColor == c) 3.dp else 0.dp, Color(0xFF1A1A1A), CircleShape)
-                            .clickable { penColor = c }
-                    )
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Thin" to 3f, "Medium" to 6f, "Thick" to 12f).forEach { (label, w) ->
-                    Box(
-                        modifier = Modifier.background(if (penWidth == w) LIVE_GOLD else Color(0xFFF5F3EC), RoundedCornerShape(100.dp))
-                            .clickable { penWidth = w }.padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) { Text(label, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = if (penWidth == w) Color.White else Color(0xFF5B5F6B)) }
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = { muted = !muted; AgoraLiveAudio.setMuted(muted) },
@@ -451,50 +284,6 @@ fun AdminLiveClassCard() {
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC0392B)),
                     shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f)
                 ) { Text("⏹ Stop Class", color = Color.White, fontWeight = FontWeight.Bold) }
-            }
-
-            // ---- Below Mute/Stop: PDF upload AND Paste+Save always together here,
-            // regardless of which mode the top switcher currently shows. ----
-            Spacer(Modifier.height(14.dp))
-
-            Button(
-                onClick = { pdfPickerLauncher.launch("application/pdf") }, enabled = !uploading,
-                colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD), shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().height(44.dp)
-            ) {
-                if (uploading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                else Text(if (slidePdf.isBlank()) "📂 Share PDF Files" else "📂 Change PDF Files", color = Color(0xFF12203D), fontWeight = FontWeight.Bold)
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            if (pasteEditing) {
-                OutlinedTextField(
-                    value = pastedTextDraft, onValueChange = { pastedTextDraft = it },
-                    modifier = Modifier.fillMaxWidth().height(90.dp),
-                    placeholder = { Text("Paste text to show on board...") }
-                )
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        pastedText = pastedTextDraft
-                        pasteEditing = false // collapse after saving
-                        boardMode = BoardMode.PASTE_TEXT // auto-show it on the board
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(42.dp)
-                ) { Text("💾 Save to Board", color = Color(0xFF12203D), fontWeight = FontWeight.Bold) }
-            } else {
-                Button(
-                    onClick = {
-                        pastedTextDraft = pastedText
-                        pasteEditing = true
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF5F3EC)),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(42.dp)
-                ) { Text(if (pastedText.isBlank()) "📜 Paste Text" else "✏️ Edit Text", color = Color(0xFF12203D), fontWeight = FontWeight.Bold) }
             }
 
             if (msg.isNotEmpty()) { Spacer(Modifier.height(10.dp)); Text(msg, fontSize = 12.sp, color = Color(0xFF946B00), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
