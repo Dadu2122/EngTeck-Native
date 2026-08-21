@@ -301,19 +301,35 @@ fun LiveClassJoinCard() {
                     }
                 }
 
-                // Board is now the real website board, loaded in a WebView —
-                // same as the teacher's screen. Native audio (Agora) below
-                // keeps working independently; this only replaces the visual board.
-                // ?embed=board hides the site's header/join-form and forces the
-                // board visible — pure CSS-level, doesn't touch the site's audio JS.
-                com.shreeyog.engteck.live.LiveClassBoardWebView(
-                    url = "https://dadu2122.github.io/Shree-English-Classes/?embed=board#liveClassSection",
+                // Full-bleed board: uses offset() (not negative padding — that crashes)
+                // to escape this screen's own 22.dp side padding and stretch edge-to-edge.
+                // Thin black border, matching the teacher's board.
+                val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .width(screenWidthDp)
+                        .offset(x = -SCREEN_SIDE_PADDING)
                         .height(460.dp)
                         .background(Color.White)
                         .border(0.75.dp, Color.Black)
-                )
+                ) {
+                    if (slideBitmap != null) {
+                        Image(
+                            bitmap = slideBitmap!!.asImageBitmap(),
+                            contentDescription = "Slide",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else if (slidePdf.isNotBlank()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = SLIVE_NAVY)
+                        }
+                    } else {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("🔊 You're connected", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F7A3D))
+                        }
+                    }
+                }
 
                 Spacer(Modifier.height(14.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
