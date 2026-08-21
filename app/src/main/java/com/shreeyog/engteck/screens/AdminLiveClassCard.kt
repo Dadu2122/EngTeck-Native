@@ -281,38 +281,33 @@ fun AdminLiveClassCard() {
             }
         }
 
-        // Dark navy frame at comfortable width (no full-bleed offset trick —
-        // that kept causing gap/nesting bugs). Inside it, a white PDF card sits
-        // inset with real padding, exactly like the website's board: content
-        // stays centred, proportional, and always readable regardless of the
-        // PDF's own text colours (white background = safe for any content).
+        // True full-bleed white board: uses the SAME real-measured offset as the
+        // status strip above (leftInset, captured via onGloballyPositioned) so it
+        // stretches to the actual screen edge regardless of nesting — no guessed
+        // padding constant, no gap. White fills edge-to-edge (no dark frame/inset
+        // margin anymore), and taller (640dp) to show more of the PDF at once.
+        val screenWidthPx = androidx.compose.ui.platform.LocalView.current.let {
+            it.rootView.width.takeIf { w -> w > 0 } ?: androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+        }
+        val screenWidthDp = with(density) { screenWidthPx.toFloat().toDp() }
+        val leftInsetDp = with(density) { leftInset.toDp() }
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(460.dp)
-                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(LIVE_BOARD_TOP, LIVE_BOARD_BOTTOM)))
-                .padding(14.dp)
+                .width(screenWidthDp)
+                .offset(x = -leftInsetDp)
+                .height(640.dp)
+                .background(Color.White)
+                .border(0.75.dp, Color.Black)
                 .onSizeChanged { boardSizePx = it }
+                .graphicsLayer(
+                    scaleX = zoomScale, scaleY = zoomScale,
+                    translationX = zoomOffsetX, translationY = zoomOffsetY
+                )
         ) {
-            CornerBracket(Alignment.TopStart)
-            CornerBracket(Alignment.TopEnd)
-            CornerBracket(Alignment.BottomStart)
-            CornerBracket(Alignment.BottomEnd)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.White, RoundedCornerShape(10.dp))
-                    .border(1.dp, LIVE_GOLD.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-                    .padding(if (boardMode == BoardMode.PDF) 0.dp else 20.dp)
-                    .graphicsLayer(
-                        scaleX = zoomScale, scaleY = zoomScale,
-                        translationX = zoomOffsetX, translationY = zoomOffsetY
-                    )
-            ) {
-                when (boardMode) {
-                    BoardMode.PDF -> {
-                        if (slideBitmap != null) {
-                            Image(bitmap = slideBitmap!!.asImageBitmap(), contentDescription = "Slide", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+            when (boardMode) {
+                BoardMode.PDF -> {
+                    if (slideBitmap != null) {
+                        Image(bitmap = slideBitmap!!.asImageBitmap(), contentDescription = "Slide", contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
                         } else {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(if (slidePdf.isBlank()) "No PDF shared yet." else "Loading...", fontSize = 12.sp, color = Color(0xFF8A8F99))
@@ -347,7 +342,6 @@ fun AdminLiveClassCard() {
                         zoomOffsetY = (zoomOffsetY + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
                     }
                 )
-            }
         }
 
         // Dark page-nav strip under the board
