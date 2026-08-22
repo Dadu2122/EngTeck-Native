@@ -1,5 +1,9 @@
 package com.shreeyog.engteck.screens
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -12,13 +16,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.google.firebase.database.FirebaseDatabase
+
+private fun decodeBase64Photo(raw: String?): Bitmap? {
+    if (raw.isNullOrBlank()) return null
+    return try {
+        val pureBase64 = if (raw.contains(",")) raw.substringAfter(",") else raw
+        val bytes = Base64.decode(pureBase64, Base64.DEFAULT)
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    } catch (e: Exception) {
+        null
+    }
+}
 
 data class ProfileContent(
     val teacherName: String = "Teacher Name",
@@ -63,6 +78,7 @@ fun TeacherProfileCard() {
                 .padding(horizontal = 20.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            val photoBitmap = remember(content.teacherPhotoBase64) { decodeBase64Photo(content.teacherPhotoBase64) }
             Box(
                 modifier = Modifier
                     .size(120.dp)
@@ -71,9 +87,9 @@ fun TeacherProfileCard() {
                     .border(3.dp, Color(0xFFD4A017), RoundedCornerShape(20.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                if (!content.teacherPhotoBase64.isNullOrBlank()) {
-                    AsyncImage(
-                        model = content.teacherPhotoBase64,
+                if (photoBitmap != null) {
+                    Image(
+                        bitmap = photoBitmap.asImageBitmap(),
                         contentDescription = content.teacherName,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(17.dp))
