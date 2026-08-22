@@ -159,8 +159,11 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
                 val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 if (bytes != null) {
                     val b64 = "data:application/pdf;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/slidePdf").setValue(b64)
-                    FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/currentPage").setValue(0)
+                    val db = FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey")
+                    db.child("slidePdf").setValue(b64)
+                    db.child("currentPage").setValue(0)
+                    db.child("boardMode").setValue(BoardMode.PDF.name)
+                    boardMode = BoardMode.PDF
                     msg = "Slides shared with the class."
                 } else msg = "Could not read that file."
             } catch (e: Exception) {
@@ -356,14 +359,13 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
                             }
                         }
                         BoardMode.PASTE_TEXT -> {
-                            Column(
+                            BoardPastedTextView(
+                                pastedText = pastedText,
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .verticalScroll(rememberScrollState())
                                     .padding(20.dp)
-                            ) {
-                                Text(pastedText.ifBlank { "Paste text below to show it here." }, fontSize = 15.sp, color = Color(0xFF1A1A1A), lineHeight = 24.sp)
-                            }
+                            )
                         }
                         BoardMode.WHITEBOARD -> {
                             Box(Modifier.fillMaxSize())
@@ -483,6 +485,7 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
                             .clickable {
                                 boardMode = mode
                                 if (mode == BoardMode.PASTE_TEXT && pastedText.isBlank()) pasteEditing = true
+                                FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/boardMode").setValue(mode.name)
                             }
                             .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center
@@ -604,6 +607,9 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
                         pastedText = pastedTextDraft
                         pasteEditing = false // collapse after saving
                         boardMode = BoardMode.PASTE_TEXT // auto-show it on the board
+                        val db = FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey")
+                        db.child("pastedText").setValue(pastedTextDraft)
+                        db.child("boardMode").setValue(BoardMode.PASTE_TEXT.name)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD),
                     shape = RoundedCornerShape(12.dp),
