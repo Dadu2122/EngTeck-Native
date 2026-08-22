@@ -106,7 +106,7 @@ private fun androidx.compose.foundation.layout.BoxScope.CornerBracket(alignment:
 }
 
 @Composable
-fun AdminLiveClassCard() {
+fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
     val context = LocalContext.current
     var isLive by remember { mutableStateOf(false) }
     var starting by remember { mutableStateOf(false) }
@@ -145,8 +145,8 @@ fun AdminLiveClassCard() {
                 val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 if (bytes != null) {
                     val b64 = "data:application/pdf;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    FirebaseDatabase.getInstance().getReference("liveClasses/default/slidePdf").setValue(b64)
-                    FirebaseDatabase.getInstance().getReference("liveClasses/default/currentPage").setValue(0)
+                    FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/slidePdf").setValue(b64)
+                    FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/currentPage").setValue(0)
                     msg = "Slides shared with the class."
                 } else msg = "Could not read that file."
             } catch (e: Exception) {
@@ -157,17 +157,17 @@ fun AdminLiveClassCard() {
     }
 
     LaunchedEffect(Unit) {
-        FirebaseDatabase.getInstance().getReference("liveClasses/default/active")
+        FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/active")
             .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
                 override fun onDataChange(s: com.google.firebase.database.DataSnapshot) { isLive = s.getValue(Boolean::class.java) ?: false }
                 override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
-        FirebaseDatabase.getInstance().getReference("liveClasses/default/slidePdf")
+        FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/slidePdf")
             .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
                 override fun onDataChange(s: com.google.firebase.database.DataSnapshot) { slidePdf = s.getValue(String::class.java) ?: "" }
                 override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
-        FirebaseDatabase.getInstance().getReference("liveClasses/default/currentPage")
+        FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/currentPage")
             .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
                 override fun onDataChange(s: com.google.firebase.database.DataSnapshot) {
                     currentPage = s.getValue(Int::class.java) ?: 0
@@ -175,7 +175,7 @@ fun AdminLiveClassCard() {
                 }
                 override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
-        FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests")
+        FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/repeatRequests")
             .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
                 override fun onDataChange(s: com.google.firebase.database.DataSnapshot) { repeatCount = s.childrenCount.toInt() }
                 override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
@@ -208,24 +208,24 @@ fun AdminLiveClassCard() {
         msg = "Starting class..."
         AgoraLiveAudio.onJoined = {
             starting = false; connected = true; msg = ""
-            FirebaseDatabase.getInstance().getReference("liveClasses/default/active").setValue(true)
+            FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/active").setValue(true)
         }
         AgoraLiveAudio.onUserJoined = { participantCount++ }
         AgoraLiveAudio.onUserLeft = { if (participantCount > 0) participantCount-- }
         AgoraLiveAudio.onError = { err -> starting = false; msg = "Could not start: $err" }
-        AgoraLiveAudio.join(context, "default", 1)
+        AgoraLiveAudio.join(context, "live_$teacherKey", 1)
     }
 
     fun stopClass() {
         AgoraLiveAudio.leave()
         connected = false; msg = ""; participantCount = 0
-        FirebaseDatabase.getInstance().getReference("liveClasses/default/active").setValue(false)
-        FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests").removeValue()
+        FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/active").setValue(false)
+        FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/repeatRequests").removeValue()
     }
 
     fun goToPage(page: Int) {
         val clamped = page.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
-        FirebaseDatabase.getInstance().getReference("liveClasses/default/currentPage").setValue(clamped)
+        FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/currentPage").setValue(clamped)
     }
 
     if (!connected) {
@@ -265,6 +265,8 @@ fun AdminLiveClassCard() {
                 BlinkingDot(LIVE_GREEN)
                 Spacer(Modifier.width(7.dp))
                 Text("S.D.BOARD", color = Color.White.copy(alpha = 0.9f), fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, letterSpacing = 1.5.sp)
+                Spacer(Modifier.width(8.dp))
+                Text("· $teacherName", color = LIVE_GOLD, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
             }
             Box(
                 modifier = Modifier.background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(100.dp))
