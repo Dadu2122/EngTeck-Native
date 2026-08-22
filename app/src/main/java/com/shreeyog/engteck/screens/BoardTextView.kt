@@ -21,6 +21,26 @@ import kotlinx.coroutines.withContext
 
 data class BoardTextBlock(val text: String, val isPoem: Boolean)
 
+// Splits long pasted text into "pages" (like the PDF viewer's 1/2, 2/2...),
+// breaking at paragraph boundaries near the character limit so a page never
+// cuts a sentence in half where avoidable.
+fun paginateBoardText(raw: String, charsPerPage: Int = 1400): List<String> {
+    if (raw.isBlank()) return listOf("")
+    val blocks = raw.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }
+    val pages = mutableListOf<String>()
+    var current = StringBuilder()
+    for (block in blocks) {
+        if (current.isNotEmpty() && current.length + block.length > charsPerPage) {
+            pages.add(current.toString().trim())
+            current = StringBuilder()
+        }
+        if (current.isNotEmpty()) current.append("\n\n")
+        current.append(block)
+    }
+    if (current.isNotEmpty()) pages.add(current.toString().trim())
+    return if (pages.isEmpty()) listOf("") else pages
+}
+
 // Splits pasted text on blank lines into blocks, then guesses whether each
 // block is a poem stanza (short lines — keep exact line breaks, no justify)
 // or a prose paragraph (join into one flowing block, justify it).
@@ -96,6 +116,7 @@ fun BoardPastedTextView(pastedText: String, modifier: Modifier = Modifier, textC
                 }
                 ClickableText(
                     text = annotated,
+                    modifier = Modifier.fillMaxWidth(),
                     style = TextStyle(
                         fontSize = 15.sp,
                         color = textColor,
