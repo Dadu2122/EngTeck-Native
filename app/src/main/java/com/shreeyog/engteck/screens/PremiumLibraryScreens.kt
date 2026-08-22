@@ -387,7 +387,7 @@ private fun VideoShelfCard(item: LibraryItem, isSelected: Boolean, onClick: () -
             .width(150.dp)
             .aspectRatio(3f / 4f)
             .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 10.dp))
-            .background(if (ytId == null) videoGradient(item.title) else Color.Black)
+            .background(if (ytId == null) videoGradient(item.title) else Brush.linearGradient(listOf(Color.Black, Color.Black)))
             .then(
                 if (isSelected) Modifier.border(2.5.dp, Color(0xFFD4A017), RoundedCornerShape(topStart = 10.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 10.dp))
                 else Modifier
