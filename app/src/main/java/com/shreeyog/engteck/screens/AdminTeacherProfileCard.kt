@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -15,14 +16,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.google.firebase.database.FirebaseDatabase
 import java.io.ByteArrayOutputStream
+
+private fun decodeBase64PhotoAdmin(raw: String?): Bitmap? {
+    if (raw.isNullOrBlank()) return null
+    return try {
+        val pureBase64 = if (raw.contains(",")) raw.substringAfter(",") else raw
+        val bytes = Base64.decode(pureBase64, Base64.DEFAULT)
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    } catch (e: Exception) {
+        null
+    }
+}
 
 @Composable
 fun AdminTeacherProfileCard() {
@@ -93,6 +105,7 @@ fun AdminTeacherProfileCard() {
         if (loading) {
             CircularProgressIndicator(color = Color(0xFF12203D))
         } else {
+            val previewBitmap = remember(photoBase64) { decodeBase64PhotoAdmin(photoBase64) }
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
@@ -102,9 +115,9 @@ fun AdminTeacherProfileCard() {
                     .border(2.dp, Color(0xFFD4A017), RoundedCornerShape(18.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                if (!photoBase64.isNullOrBlank()) {
-                    AsyncImage(
-                        model = photoBase64,
+                if (previewBitmap != null) {
+                    Image(
+                        bitmap = previewBitmap.asImageBitmap(),
                         contentDescription = "Teacher photo",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp))
