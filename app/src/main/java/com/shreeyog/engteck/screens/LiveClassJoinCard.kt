@@ -24,8 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -45,8 +43,10 @@ private val SLIVE_BOARD_BOTTOM = Color(0xFF0A0D1A)
 private val SLIVE_GOLD = Color(0xFFD4A017)
 private val SLIVE_GREEN = Color(0xFF39FF9E)
 
-// This screen's own outer Column uses padding(horizontal = 22.dp) below — used to
-// bleed the board edge-to-edge via offset() (safe; padding() rejects negative values).
+// Side padding used for non-board sections (header, join form, buttons).
+// The board itself no longer needs this — it's a direct fillMaxWidth child
+// of the root Column, which has no padding of its own, so it's naturally
+// edge-to-edge with zero offset math needed.
 private val SCREEN_SIDE_PADDING = 22.dp
 
 // Same gently-pulsing dot as the teacher's board.
@@ -201,21 +201,23 @@ fun LiveClassJoinCard() {
         }
     }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp)) {
-        Text(
-            "LIVE",
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.8.sp,
-            color = Color(0xFF1B6B79)
-        )
-        Spacer(Modifier.height(6.dp))
-        Box(
-            modifier = Modifier
-                .background(Color(0xFFC0392B), RoundedCornerShape(8.dp))
-                .padding(horizontal = 12.dp, vertical = 4.dp)
-        ) {
-            Text("Live Class", color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp)) {
+            Text(
+                "LIVE",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.8.sp,
+                color = Color(0xFF1B6B79)
+            )
+            Spacer(Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .background(Color(0xFFC0392B), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                Text("Live Class", color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold)
+            }
         }
         Spacer(Modifier.height(14.dp))
 
@@ -224,6 +226,7 @@ fun LiveClassJoinCard() {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 22.dp)
                     .background(Color.White)
                     .border(1.5.dp, SLIVE_GOLD)
                     .padding(vertical = 22.dp, horizontal = 20.dp),
@@ -303,15 +306,8 @@ fun LiveClassJoinCard() {
             // ---------- Joined: same "Smart Digital Board" look as the teacher's screen ----------
             Column(modifier = Modifier.fillMaxWidth()) {
 
-                val density = androidx.compose.ui.platform.LocalDensity.current
-                var leftInset by remember { mutableStateOf(0f) }
-                var rowWidthPx by remember { mutableStateOf(0f) }
                 Row(
-                    modifier = Modifier.fillMaxWidth().background(SLIVE_NAVY).padding(horizontal = 14.dp, vertical = 12.dp)
-                        .onGloballyPositioned {
-                            leftInset = it.positionInWindow().x
-                            rowWidthPx = it.size.width.toFloat()
-                        },
+                    modifier = Modifier.fillMaxWidth().background(SLIVE_NAVY).padding(horizontal = 14.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -334,15 +330,12 @@ fun LiveClassJoinCard() {
                     }
                 }
 
-                // True full-bleed white board: width = leftInset + row's own
-                // measured width + leftInset again — entirely self-measured,
-                // no screen-width guess of any kind.
-                val leftInsetDp = with(density) { leftInset.toDp() }
-                val fullBleedWidthDp = with(density) { (rowWidthPx + 2 * leftInset).toDp() }
+                // Plain fillMaxWidth — no offset/measuring needed anymore, since
+                // the root Column above no longer wraps this section in any
+                // padding (HomeScreen.kt confirmed there's none above it either).
                 Box(
                     modifier = Modifier
-                        .width(fullBleedWidthDp)
-                        .offset(x = -leftInsetDp)
+                        .fillMaxWidth()
                         .height(640.dp)
                         .background(Color.White)
                         .border(0.75.dp, Color.Black)
@@ -366,7 +359,7 @@ fun LiveClassJoinCard() {
                 }
 
                 Spacer(Modifier.height(14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(modifier = Modifier.padding(horizontal = 22.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
                         onClick = {
                             muted = !muted
@@ -404,9 +397,10 @@ fun LiveClassJoinCard() {
 
                 if (joinMsg.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
-                    Text(joinMsg, fontSize = 12.sp, color = Color(0xFF946B00), textAlign = TextAlign.Center)
+                    Text(joinMsg, fontSize = 12.sp, color = Color(0xFF946B00), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp))
                 }
             }
         }
+        Spacer(Modifier.height(16.dp))
     }
 }
