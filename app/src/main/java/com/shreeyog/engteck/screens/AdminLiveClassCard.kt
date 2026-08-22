@@ -360,29 +360,32 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .verticalScroll(rememberScrollState())
+                                    .padding(20.dp)
                             ) {
-                                Text(pastedText.ifBlank { "Paste text below to show it here." }, fontSize = 15.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp)
+                                Text(pastedText.ifBlank { "Paste text below to show it here." }, fontSize = 15.sp, color = Color(0xFF1A1A1A), lineHeight = 24.sp)
                             }
                         }
                         BoardMode.WHITEBOARD -> {
                             Box(Modifier.fillMaxSize())
                         }
                     }
-                    AnnotationCanvas(
-                        modifier = Modifier.fillMaxSize(),
-                        tool = tool, color = penColor, penWidth = penWidth,
-                        strokes = strokes, redoStack = redoStack,
-                        swipeEnabled = boardMode == BoardMode.PDF,
-                        onSwipeLeft = { if (currentPage < pageCount - 1) goToPage(currentPage + 1) },
-                        onSwipeRight = { if (currentPage > 0) goToPage(currentPage - 1) },
-                        onZoomPan = { zoomChange, panChange ->
-                            zoomScale = (zoomScale * zoomChange).coerceIn(1f, 4f)
-                            val maxOffsetX = (boardSizePx.width * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
-                            val maxOffsetY = (boardSizePx.height * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
-                            zoomOffsetX = (zoomOffsetX + panChange.x).coerceIn(-maxOffsetX, maxOffsetX)
-                            zoomOffsetY = (zoomOffsetY + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
-                        }
-                    )
+                    if (boardMode != BoardMode.PASTE_TEXT) {
+                        AnnotationCanvas(
+                            modifier = Modifier.fillMaxSize(),
+                            tool = tool, color = penColor, penWidth = penWidth,
+                            strokes = strokes, redoStack = redoStack,
+                            swipeEnabled = boardMode == BoardMode.PDF,
+                            onSwipeLeft = { if (currentPage < pageCount - 1) goToPage(currentPage + 1) },
+                            onSwipeRight = { if (currentPage > 0) goToPage(currentPage - 1) },
+                            onZoomPan = { zoomChange, panChange ->
+                                zoomScale = (zoomScale * zoomChange).coerceIn(1f, 4f)
+                                val maxOffsetX = (boardSizePx.width * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
+                                val maxOffsetY = (boardSizePx.height * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
+                                zoomOffsetX = (zoomOffsetX + panChange.x).coerceIn(-maxOffsetX, maxOffsetX)
+                                zoomOffsetY = (zoomOffsetY + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
+                            }
+                        )
+                    }
             }
         }
 
