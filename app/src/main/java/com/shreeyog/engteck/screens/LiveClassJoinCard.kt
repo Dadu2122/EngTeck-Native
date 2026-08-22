@@ -14,6 +14,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
@@ -113,6 +114,12 @@ fun LiveClassJoinCard() {
     var repeatSent by remember { mutableStateOf(false) }
     var participantCount by remember { mutableStateOf(1) } // at least this student
 
+    // Multiple teachers can run separate live classes at once — this picks which one.
+    var allTeachers by remember { mutableStateOf<List<TeacherEntry>>(emptyList()) }
+    var liveMap by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    var selectedTeacherKey by remember { mutableStateOf("") }
+    var selectedTeacherName by remember { mutableStateOf("") }
+
     // Two-finger pinch-zoom + pan on the slide, same behaviour as the teacher's board.
     var zoomScale by remember { mutableStateOf(1f) }
     var zoomOffsetX by remember { mutableStateOf(0f) }
@@ -133,7 +140,7 @@ fun LiveClassJoinCard() {
             joining = false
             joinMsg = "Could not connect: $err — please try again."
         }
-        AgoraLiveAudio.join(context, "default", uid)
+        AgoraLiveAudio.join(context, "live_$selectedTeacherKey", uid)
     }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
@@ -161,7 +168,7 @@ fun LiveClassJoinCard() {
     fun sendRepeatRequest() {
         if (studentUid == 0) return
         repeatSent = true
-        FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests")
+        FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/repeatRequests")
             .child(studentUid.toString()).setValue(System.currentTimeMillis())
     }
 
@@ -170,7 +177,7 @@ fun LiveClassJoinCard() {
             if (joined) {
                 AgoraLiveAudio.leave()
                 if (studentUid != 0) {
-                    FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests")
+                    FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/repeatRequests")
                         .child(studentUid.toString()).removeValue()
                 }
             }
@@ -180,22 +187,49 @@ fun LiveClassJoinCard() {
         }
     }
 
+    // Fetch all teachers once, then track each one's live/active status —
+    // this powers the "who's live right now" picker shown before a teacher is chosen.
     LaunchedEffect(Unit) {
-        FirebaseDatabase.getInstance().getReference("liveClasses/default/active")
+        FirebaseDatabase.getInstance().getReference("teachers").get()
+            .addOnSuccessListener { snapshot ->
+                allTeachers = snapshot.children.mapNotNull { c ->
+                    val n = c.child("name").getValue(String::class.java) ?: return@mapNotNull null
+                    TeacherEntry(c.key ?: "", n, "")
+                }
+            }
+    }
+    allTeachers.forEach { t ->
+        DisposableEffect(t.key) {
+            val ref = FirebaseDatabase.getInstance().getReference("liveClasses/${t.key}/active")
+            val listener = object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                    liveMap = liveMap + (t.key to (snapshot.getValue(Boolean::class.java) ?: false))
+                }
+                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+            }
+            ref.addValueEventListener(listener)
+            onDispose { ref.removeEventListener(listener) }
+        }
+    }
+
+    // Once a teacher is picked, follow that specific teacher's live class data.
+    LaunchedEffect(selectedTeacherKey) {
+        if (selectedTeacherKey.isEmpty()) return@LaunchedEffect
+        FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/active")
             .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
                 override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
                     isLive = snapshot.getValue(Boolean::class.java) ?: false
                 }
                 override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
             })
-        FirebaseDatabase.getInstance().getReference("liveClasses/default/slidePdf")
+        FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/slidePdf")
             .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
                 override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
                     slidePdf = snapshot.getValue(String::class.java) ?: ""
                 }
                 override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
             })
-        FirebaseDatabase.getInstance().getReference("liveClasses/default/currentPage")
+        FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/currentPage")
             .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
                 override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
                     currentPage = snapshot.getValue(Int::class.java) ?: 0
@@ -244,7 +278,54 @@ fun LiveClassJoinCard() {
         Spacer(Modifier.height(14.dp))
 
         if (!joined) {
-            // ---------- Not yet joined: same simple join form as before ----------
+            if (selectedTeacherKey.isEmpty()) {
+                // ---------- Step 1: pick which teacher's live class to join ----------
+                val liveTeachers = allTeachers.filter { liveMap[it.key] == true }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp)
+                        .background(Color.White)
+                        .border(1.5.dp, SLIVE_GOLD)
+                        .padding(vertical = 22.dp, horizontal = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (liveTeachers.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFFE3DFD3), RoundedCornerShape(100.dp))
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text("● Not Live Right Now", color = Color(0xFF8A8F99), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        Text(
+                            "Koi bhi teacher abhi live nahi hai. Class shuru hote hi yahan dikhega.",
+                            fontSize = 12.5.sp, color = Color(0xFF5B5F6B), textAlign = TextAlign.Center, lineHeight = 18.sp
+                        )
+                    } else {
+                        Text("Abhi Live Classes", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
+                        Spacer(Modifier.height(14.dp))
+                        liveTeachers.forEach { t ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 10.dp)
+                                    .background(Color(0xFFF5F3EC), RoundedCornerShape(12.dp))
+                                    .clickable { selectedTeacherKey = t.key; selectedTeacherName = t.name }
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(Modifier.size(8.dp).background(Color(0xFF1F7A3D), CircleShape))
+                                Spacer(Modifier.width(10.dp))
+                                Text(t.name, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D), modifier = Modifier.weight(1f))
+                                Text("Join ›", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE85D4C))
+                            }
+                        }
+                    }
+                }
+            } else {
+            // ---------- Step 2: same simple join form as before, scoped to the chosen teacher ----------
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -254,6 +335,11 @@ fun LiveClassJoinCard() {
                     .padding(vertical = 22.dp, horizontal = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                TextButton(onClick = { selectedTeacherKey = ""; joinMsg = "" }, modifier = Modifier.align(Alignment.Start)) {
+                    Text("‹ Change Teacher", fontSize = 11.5.sp, color = Color(0xFF5B5F6B))
+                }
+                Text(selectedTeacherName, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
+                Spacer(Modifier.height(8.dp))
                 Box(
                     modifier = Modifier
                         .background(if (isLive) Color(0xFFE3F5E9) else Color(0xFFE3DFD3), RoundedCornerShape(100.dp))
@@ -323,6 +409,7 @@ fun LiveClassJoinCard() {
                     Spacer(Modifier.height(10.dp))
                     Text(joinMsg, fontSize = 12.sp, color = Color(0xFF946B00), textAlign = TextAlign.Center)
                 }
+            }
             }
         } else {
             // ---------- Joined: same "Smart Digital Board" look as the teacher's screen ----------
@@ -438,7 +525,7 @@ fun LiveClassJoinCard() {
                         onClick = {
                             AgoraLiveAudio.leave()
                             if (studentUid != 0) {
-                                FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests")
+                                FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/repeatRequests")
                                     .child(studentUid.toString()).removeValue()
                             }
                             joined = false
