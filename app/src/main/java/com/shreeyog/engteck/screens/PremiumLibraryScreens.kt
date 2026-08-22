@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -27,7 +28,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
 import com.google.firebase.database.FirebaseDatabase
+
+// Hosted on the same real GitHub Pages domain as the Shree English Classes
+// website — YouTube trusts this origin exactly like it trusts the website,
+// which is why this actually plays in-app instead of getting rejected.
+private const val VIDEO_EMBED_HOST = "https://dadu2122.github.io/Shree-English-Classes/video-embed.html"
 
 private val PREMIUM_CATS = listOf(
     "tgt" to "TGT", "pgt" to "PGT", "lt" to "LT", "gic" to "GIC Lecturer",
@@ -329,19 +336,12 @@ private fun VideoShelf(items: List<LibraryItem>, expandedIndex: Int?, onToggleEx
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
                                 settings.mediaPlaybackRequiresUserGesture = false
-                                settings.loadWithOverviewMode = true
-                                settings.useWideViewPort = true
-                                settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"
                                 webViewClient = WebViewClient()
                                 webChromeClient = WebChromeClient()
-                                // Load the real youtube.com watch page — exactly like opening
-                                // it in a mobile browser (which is what already works on the
-                                // website). This isn't subject to the "allow embedding" iframe
-                                // restriction at all, since it's not an embed — it's youtube.com itself.
-                                loadUrl("https://www.youtube.com/watch?v=$ytId")
+                                loadUrl("$VIDEO_EMBED_HOST?id=$ytId")
                             }
                         },
-                        modifier = Modifier.fillMaxWidth().height(500.dp)
+                        modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                     )
                 }
             } else {
@@ -360,13 +360,6 @@ private fun VideoShelf(items: List<LibraryItem>, expandedIndex: Int?, onToggleEx
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(expandedItem.title, color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                if (ytId != null) {
-                    TextButton(onClick = {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://youtu.be/$ytId")))
-                    }) {
-                        Text("▶ YouTube", color = Color(0xFF3B6EA8), fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
-                    }
-                }
                 TextButton(onClick = { onToggleExpand(items.indexOf(expandedItem)) }) {
                     Text("✕ Close", color = Color(0xFFD4A017), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
@@ -388,57 +381,84 @@ private fun VideoShelf(items: List<LibraryItem>, expandedIndex: Int?, onToggleEx
 
 @Composable
 private fun VideoShelfCard(item: LibraryItem, isSelected: Boolean, onClick: () -> Unit) {
+    val ytId = extractYouTubeId(item.url)
     Box(
         modifier = Modifier
             .width(150.dp)
             .aspectRatio(3f / 4f)
             .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 10.dp))
-            .background(videoGradient(item.title))
+            .background(if (ytId == null) videoGradient(item.title) else Color.Black)
             .then(
                 if (isSelected) Modifier.border(2.5.dp, Color(0xFFD4A017), RoundedCornerShape(topStart = 10.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 10.dp))
                 else Modifier
             )
             .clickable(onClick = onClick)
     ) {
-        Box(
-            modifier = Modifier
-                .width(10.dp)
-                .fillMaxHeight()
-                .align(Alignment.CenterStart)
-                .background(Color.Black.copy(alpha = 0.22f))
-        )
+        if (ytId != null) {
+            AsyncImage(
+                model = "https://img.youtube.com/vi/$ytId/hqdefault.jpg",
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            // Dark scrim so the title stays readable over any thumbnail.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.15f), Color.Black.copy(alpha = 0.85f)), startY = 100f))
+            )
+            // Red YouTube play button, centered — same visual language as YouTube thumbnails everywhere.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFFFF0000)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("▶", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .width(10.dp)
+                    .fillMaxHeight()
+                    .align(Alignment.CenterStart)
+                    .background(Color.Black.copy(alpha = 0.22f))
+            )
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 20.dp, top = 14.dp, end = 12.dp, bottom = 14.dp),
+                .padding(start = if (ytId == null) 20.dp else 12.dp, top = 14.dp, end = 12.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("🎬", fontSize = 20.sp)
+            if (ytId == null) Text("🎬", fontSize = 20.sp) else Spacer(Modifier.height(1.dp))
             Column {
                 Text(
                     item.title,
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    maxLines = 4,
+                    fontSize = 13.sp,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    lineHeight = 17.sp
+                    lineHeight = 16.sp
                 )
                 Spacer(Modifier.height(6.dp))
-                Box(
-                    modifier = Modifier
-                        .background(if (isSelected) Color(0xFFD4A017) else Color.Black.copy(alpha = 0.25f), RoundedCornerShape(100.dp))
-                        .padding(horizontal = 9.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        if (isSelected) "▶ PLAYING" else "▶ WATCH",
-                        color = if (isSelected) Color(0xFF12203D) else Color.White.copy(alpha = 0.85f),
-                        fontSize = 9.sp, fontWeight = FontWeight.Bold
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFFFF0000), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    ) {
+                        Text("▶", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(5.dp))
+                    Text("Video", color = Color.White.copy(alpha = 0.9f), fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
                 }
                 if (item.date.isNotEmpty()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text("📅 ${item.date}", color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("📅 ${item.date}", color = Color.White.copy(alpha = 0.7f), fontSize = 9.5.sp)
                 }
             }
         }
