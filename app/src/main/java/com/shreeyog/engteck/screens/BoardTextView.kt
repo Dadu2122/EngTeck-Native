@@ -32,7 +32,11 @@ fun formatPastedBoardText(raw: String): List<BoardTextBlock> {
         if (trimmed.isBlank()) return@mapNotNull null
         val lines = trimmed.split("\n").filter { it.isNotBlank() }
         val avgLen = if (lines.isNotEmpty()) lines.sumOf { it.length } / lines.size else 0
-        val isPoem = lines.size > 1 && avgLen < 55
+        // Genuine poem lines are usually quite short (deliberate breaks); prose
+        // pasted from a document/app also wraps into separate lines but those
+        // tend to run much longer per line — so only treat it as a poem when
+        // lines are consistently short AND there are several of them.
+        val isPoem = lines.size >= 3 && avgLen < 32
         val displayText = if (isPoem) trimmed else lines.joinToString(" ") { it.trim() }
         BoardTextBlock(displayText, isPoem)
     }
