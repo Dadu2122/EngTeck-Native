@@ -3,41 +3,31 @@ package com.shreeyog.engteck.screens
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import com.google.firebase.database.FirebaseDatabase
-
-private fun extractYouTubeId(url: String): String? {
-    val patterns = listOf(
-        Regex("youtu\\.be/([a-zA-Z0-9_-]{6,})"),
-        Regex("youtube\\.com/watch\\?v=([a-zA-Z0-9_-]{6,})"),
-        Regex("youtube\\.com/embed/([a-zA-Z0-9_-]{6,})"),
-        Regex("youtube\\.com/shorts/([a-zA-Z0-9_-]{6,})")
-    )
-    for (p in patterns) {
-        val m = p.find(url)
-        if (m != null) return m.groupValues[1]
-    }
-    return null
-}
 
 private val PREMIUM_CATS = listOf(
     "tgt" to "TGT", "pgt" to "PGT", "lt" to "LT", "gic" to "GIC Lecturer",
@@ -54,6 +44,35 @@ private fun getSavedMobile(context: Context): String =
 
 private fun saveMobile(context: Context, mobile: String) {
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_STUDENT_MOBILE, mobile).apply()
+}
+
+private fun extractYouTubeId(url: String): String? {
+    val patterns = listOf(
+        Regex("youtu\\.be/([a-zA-Z0-9_-]{6,})"),
+        Regex("youtube\\.com/watch\\?v=([a-zA-Z0-9_-]{6,})"),
+        Regex("youtube\\.com/embed/([a-zA-Z0-9_-]{6,})"),
+        Regex("youtube\\.com/shorts/([a-zA-Z0-9_-]{6,})")
+    )
+    for (p in patterns) {
+        val m = p.find(url)
+        if (m != null) return m.groupValues[1]
+    }
+    return null
+}
+
+private val VIDEO_PALETTES = listOf(
+    listOf(Color(0xFF1B6B79), Color(0xFF12203D)),
+    listOf(Color(0xFFD4A017), Color(0xFF7A2E3D)),
+    listOf(Color(0xFF3B6EA8), Color(0xFF12203D)),
+    listOf(Color(0xFF7A2E3D), Color(0xFF2B0F16)),
+    listOf(Color(0xFF1F7A3D), Color(0xFF0B1730)),
+    listOf(Color(0xFFE85D4C), Color(0xFF7A2E3D))
+)
+private fun videoGradient(str: String): Brush {
+    var hash = 0
+    for (c in str) { hash = (hash * 31 + c.code) }
+    val idx = ((hash % VIDEO_PALETTES.size) + VIDEO_PALETTES.size) % VIDEO_PALETTES.size
+    return Brush.linearGradient(VIDEO_PALETTES[idx])
 }
 
 @Composable
@@ -119,9 +138,11 @@ private fun PremiumLibraryShell(
     var pendingCatLabel by remember { mutableStateOf("") }
 
     var checkingCatKey by remember { mutableStateOf("") }
-    var viewingCatLabel by remember { mutableStateOf("") }
-    var viewingItems by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
-    var playingVideoId by remember { mutableStateOf<String?>(null) }
+
+    // Unlocked category's items are shown as an inline scrolling shelf — no popup.
+    var unlockedCatLabel by remember { mutableStateOf("") }
+    var unlockedItems by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
+    var expandedIndex by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(firebasePath) {
         FirebaseDatabase.getInstance().getReference(firebasePath)
@@ -150,12 +171,14 @@ private fun PremiumLibraryShell(
         }
         checkingCatKey = catKey
         unlockMsg = ""
+        expandedIndex = null
         FirebaseDatabase.getInstance().getReference("paidVideoCategories").child(currentMobile).child(catKey)
             .get()
             .addOnSuccessListener { snap ->
                 val isPaid = snap.getValue(Boolean::class.java) ?: false
                 if (!isPaid) {
                     checkingCatKey = ""
+                    unlockedCatLabel = ""
                     unlockMsg = "$catLabel abhi unlock nahi hai — payment ke baad access milega. Teacher se sampark karein."
                     return@addOnSuccessListener
                 }
@@ -163,14 +186,14 @@ private fun PremiumLibraryShell(
                     .get()
                     .addOnSuccessListener { itemsSnap ->
                         checkingCatKey = ""
-                        viewingItems = itemsSnap.children.map { c ->
+                        unlockedItems = itemsSnap.children.map { c ->
                             LibraryItem(
                                 title = c.child("title").getValue(String::class.java) ?: "Untitled",
                                 url = c.child("url").getValue(String::class.java) ?: "",
                                 date = c.child("date").getValue(String::class.java) ?: ""
                             )
                         }
-                        viewingCatLabel = catLabel
+                        unlockedCatLabel = catLabel
                     }
                     .addOnFailureListener { checkingCatKey = ""; unlockMsg = "Load karne me dikkat aayi, dobara try karein." }
             }
@@ -191,12 +214,13 @@ private fun PremiumLibraryShell(
 
         PREMIUM_CATS.forEach { (key, catLabel) ->
             val count = counts[key] ?: 0
+            val isActiveShelf = unlockedCatLabel == catLabel
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 10.dp)
                     .background(Color(0xFFF5F3EC), RoundedCornerShape(14.dp))
-                    .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(14.dp))
+                    .border(1.5.dp, if (isActiveShelf) Color(0xFF1F7A3D) else Color(0xFFD4A017), RoundedCornerShape(14.dp))
                     .clickable(enabled = canOpenItems && checkingCatKey.isEmpty()) { openCategory(key, catLabel) }
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -209,16 +233,29 @@ private fun PremiumLibraryShell(
                 Button(
                     onClick = { openCategory(key, catLabel) },
                     enabled = checkingCatKey.isEmpty(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4A017)),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isActiveShelf) Color(0xFF1F7A3D) else Color(0xFFD4A017)),
                     shape = RoundedCornerShape(100.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     if (checkingCatKey == key) {
-                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = Color(0xFF12203D))
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = Color.White)
+                    } else if (isActiveShelf) {
+                        Text("▶ Viewing", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     } else {
                         Text("🔒 Unlock", color = Color(0xFF12203D), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+            }
+
+            // The shelf sits directly under whichever category it belongs to.
+            if (isActiveShelf) {
+                Spacer(Modifier.height(4.dp))
+                VideoShelf(
+                    items = unlockedItems,
+                    expandedIndex = expandedIndex,
+                    onToggleExpand = { idx -> expandedIndex = if (expandedIndex == idx) null else idx }
+                )
+                Spacer(Modifier.height(14.dp))
             }
         }
         if (unlockMsg.isNotEmpty()) {
@@ -263,81 +300,141 @@ private fun PremiumLibraryShell(
             }
         }
     }
+}
 
-    if (viewingCatLabel.isNotEmpty()) {
-        Dialog(onDismissRequest = { viewingCatLabel = "" }) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 480.dp)
-                    .background(Color.White, RoundedCornerShape(18.dp))
-                    .padding(18.dp)
-            ) {
-                Text("$viewingCatLabel — $title", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
-                Spacer(Modifier.height(12.dp))
-                if (viewingItems.isEmpty()) {
-                    Text("Abhi koi item nahi hai is category me.", fontSize = 12.sp, color = Color(0xFF5B5F6B))
-                } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(viewingItems) { item ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
-                                    .clickable(enabled = item.url.isNotBlank()) {
-                                        val ytId = extractYouTubeId(item.url)
-                                        if (ytId != null) {
-                                            playingVideoId = ytId
-                                        } else {
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.url))
-                                            context.startActivity(intent)
-                                        }
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("▶ ${item.title}", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
-                                    if (item.date.isNotEmpty()) Text(item.date, fontSize = 10.sp, color = Color(0xFF5B5F6B))
-                                }
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-                TextButton(onClick = { viewingCatLabel = "" }, modifier = Modifier.fillMaxWidth()) { Text("Close") }
-            }
-        }
+@Composable
+private fun VideoShelf(items: List<LibraryItem>, expandedIndex: Int?, onToggleExpand: (Int) -> Unit) {
+    val context = LocalContext.current
+
+    if (items.isEmpty()) {
+        Text("Abhi koi item nahi hai is category me.", fontSize = 12.sp, color = Color(0xFF5B5F6B))
+        return
     }
 
-    playingVideoId?.let { videoId ->
-        YouTubePlayerDialog(videoId = videoId, onDismiss = { playingVideoId = null })
+    // Expanded player sits above the shelf, full width, so it reads as "this card grew open".
+    val expandedItem = expandedIndex?.let { items.getOrNull(it) }
+    if (expandedItem != null) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color.Black)
+        ) {
+            val ytId = extractYouTubeId(expandedItem.url)
+            if (ytId != null) {
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.mediaPlaybackRequiresUserGesture = false
+                            settings.loadWithOverviewMode = true
+                            settings.useWideViewPort = true
+                            webViewClient = WebViewClient()
+                            webChromeClient = WebChromeClient()
+                            val html = """
+                                <!DOCTYPE html>
+                                <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+                                <body style="margin:0;padding:0;background:#000;">
+                                <iframe width="100%" height="100%" style="position:fixed;top:0;left:0;"
+                                    src="https://www.youtube.com/embed/$ytId?autoplay=1&playsinline=1&rel=0"
+                                    frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                                </body></html>
+                            """.trimIndent()
+                            loadDataWithBaseURL("https://www.youtube.com", html, "text/html", "utf-8", null)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clickable {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(expandedItem.url)))
+                    },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("▶ Is link ko browser me kholein", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(expandedItem.title, color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                TextButton(onClick = { onToggleExpand(items.indexOf(expandedItem)) }) {
+                    Text("✕ Close", color = Color(0xFFD4A017), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+    }
+
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        itemsIndexed(items) { index, item ->
+            VideoShelfCard(
+                item = item,
+                isSelected = expandedIndex == index,
+                onClick = { onToggleExpand(index) }
+            )
+        }
     }
 }
 
 @Composable
-private fun YouTubePlayerDialog(videoId: String, onDismiss: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss) {
+private fun VideoShelfCard(item: LibraryItem, isSelected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .width(150.dp)
+            .aspectRatio(3f / 4f)
+            .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 10.dp))
+            .background(videoGradient(item.title))
+            .then(
+                if (isSelected) Modifier.border(2.5.dp, Color(0xFFD4A017), RoundedCornerShape(topStart = 10.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 10.dp))
+                else Modifier
+            )
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(10.dp)
+                .fillMaxHeight()
+                .align(Alignment.CenterStart)
+                .background(Color.Black.copy(alpha = 0.22f))
+        )
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .background(Color.Black, RoundedCornerShape(14.dp))
+                .fillMaxSize()
+                .padding(start = 20.dp, top = 14.dp, end = 12.dp, bottom = 14.dp),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            AndroidView(
-                factory = { ctx ->
-                    WebView(ctx).apply {
-                        settings.javaScriptEnabled = true
-                        settings.mediaPlaybackRequiresUserGesture = false
-                        webViewClient = WebViewClient()
-                        loadUrl("https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1")
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-            )
-            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                Text("Close", color = Color.White, fontWeight = FontWeight.Bold)
+            Text("🎬", fontSize = 20.sp)
+            Column {
+                Text(
+                    item.title,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 17.sp
+                )
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .background(if (isSelected) Color(0xFFD4A017) else Color.Black.copy(alpha = 0.25f), RoundedCornerShape(100.dp))
+                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        if (isSelected) "▶ PLAYING" else "▶ WATCH",
+                        color = if (isSelected) Color(0xFF12203D) else Color.White.copy(alpha = 0.85f),
+                        fontSize = 9.sp, fontWeight = FontWeight.Bold
+                    )
+                }
+                if (item.date.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("📅 ${item.date}", color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp)
+                }
             }
         }
     }
