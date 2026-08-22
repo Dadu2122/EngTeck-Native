@@ -30,8 +30,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -250,20 +248,8 @@ fun AdminLiveClassCard() {
     Column(modifier = Modifier.fillMaxWidth()) {
 
         // Dark status strip: S.D.BOARD | Connected: N | ON_AIR — monospace labels.
-        // Measures its own left position AND its own width, so the board below
-        // can compute the true full-bleed width (leftInset + this row's width +
-        // leftInset again, assuming equal left/right padding — true throughout
-        // this app) instead of guessing from device/config screen width, which
-        // kept mismatching the real rendered width and leaving a gap.
-        val density = androidx.compose.ui.platform.LocalDensity.current
-        var leftInset by remember { mutableStateOf(0f) }
-        var rowWidthPx by remember { mutableStateOf(0f) }
         Row(
-            modifier = Modifier.fillMaxWidth().background(LIVE_NAVY).padding(horizontal = 14.dp, vertical = 12.dp)
-                .onGloballyPositioned {
-                    leftInset = it.positionInWindow().x
-                    rowWidthPx = it.size.width.toFloat()
-                },
+            modifier = Modifier.fillMaxWidth().background(LIVE_NAVY).padding(horizontal = 14.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -286,15 +272,13 @@ fun AdminLiveClassCard() {
             }
         }
 
-        // True full-bleed white board: width = leftInset + row's own measured
-        // width + leftInset (mirrors the same gap on the right), offset by
-        // -leftInset. Entirely self-measured — no screen-width guess of any kind.
-        val leftInsetDp = with(density) { leftInset.toDp() }
-        val fullBleedWidthDp = with(density) { (rowWidthPx + 2 * leftInset).toDp() }
+        // Plain fillMaxWidth — no offset/measuring needed. This card's root
+        // Column (above) has no padding of its own, and HomeScreen-equivalent
+        // callers were confirmed to add none either, so this is naturally
+        // edge-to-edge with zero guesswork.
         Box(
             modifier = Modifier
-                .width(fullBleedWidthDp)
-                .offset(x = -leftInsetDp)
+                .fillMaxWidth()
                 .height(640.dp)
                 .background(Color.White)
                 .border(0.75.dp, Color.Black)
