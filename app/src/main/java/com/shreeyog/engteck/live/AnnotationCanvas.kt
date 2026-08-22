@@ -72,6 +72,14 @@ fun AnnotationCanvas(
                 val down = awaitFirstDown(requireUnconsumed = false)
                 var isMultiTouch = false
 
+                // For the POINTER tool only: decided once per gesture, the first
+                // time the finger moves past a small threshold. If the drag turns
+                // out to be mostly horizontal, we claim it (page-swipe). If it's
+                // mostly vertical, we deliberately do NOT consume it, so the
+                // screen's own vertical scroll can pick it up instead.
+                var directionDecided = false
+                var horizontalSwipe = false
+
                 dragStart = down.position
                 dragCurrent = down.position
                 when (tool) {
@@ -103,6 +111,7 @@ fun AnnotationCanvas(
                             when (tool) {
                                 AnnotationTool.MARKER, AnnotationTool.HIGHLIGHTER -> {
                                     freehandPoints = (freehandPoints + change.position).toMutableList()
+                                    change.consume()
                                 }
                                 AnnotationTool.MOVE -> {
                                     if (moveIndex >= 0 && moveIndex < strokes.size) {
@@ -115,11 +124,27 @@ fun AnnotationCanvas(
                                         )
                                         moveLast = change.position
                                     }
+                                    change.consume()
                                 }
-                                AnnotationTool.POINTER -> { pointerPos = change.position }
-                                else -> {}
+                                AnnotationTool.POINTER -> {
+                                    pointerPos = change.position
+                                    val dx = change.position.x - dragStart.x
+                                    val dy = change.position.y - dragStart.y
+                                    if (!directionDecided && (abs(dx) > 12f || abs(dy) > 12f)) {
+                                        directionDecided = true
+                                        horizontalSwipe = swipeEnabled && abs(dx) > abs(dy)
+                                    }
+                                    // Only claim the touch when it's a genuine horizontal
+                                    // swipe attempt. Otherwise leave it unconsumed so the
+                                    // screen can scroll normally under the finger.
+                                    if (horizontalSwipe) change.consume()
+                                }
+                                else -> {
+                                    // Shape tools (RECTANGLE/CIRCLE/LINE/ARROW) and ERASER
+                                    // still capture the whole drag, same as before.
+                                    change.consume()
+                                }
                             }
-                            change.consume()
                         }
                     }
                 } while (event.changes.any { it.pressed })
