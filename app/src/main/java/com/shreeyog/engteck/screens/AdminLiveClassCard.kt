@@ -559,35 +559,37 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
             }
 
             Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(
                     onClick = { muted = !muted; AgoraLiveAudio.setMuted(muted) },
                     colors = ButtonDefaults.buttonColors(containerColor = if (muted) Color(0xFF8A8F99) else Color(0xFF1B6B79)),
-                    shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f).height(52.dp)
-                ) { Text(if (muted) "🔇 UNMUTE" else "🎤 MUTE", color = Color.White, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontSize = 13.sp) }
+                    shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).height(44.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp)
+                ) { Text(if (muted) "🔇" else "🎤", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.5.sp, maxLines = 1) }
                 Button(
                     onClick = { stopClass() },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC0392B)),
-                    shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f).height(52.dp)
-                ) { Text("⏹ STOP CLASS", color = Color.White, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontSize = 13.sp) }
+                    shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).height(44.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp)
+                ) { Text("⏹", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.5.sp, maxLines = 1) }
+                Button(
+                    onClick = { pdfPickerLauncher.launch("application/pdf") }, enabled = !uploading,
+                    colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD), shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).height(44.dp), contentPadding = PaddingValues(horizontal = 2.dp)
+                ) {
+                    if (uploading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                    else Text("📂 PDF", color = Color(0xFF12203D), fontWeight = FontWeight.Bold, fontSize = 10.5.sp, maxLines = 1)
+                }
+                Button(
+                    onClick = { if (!pasteEditing) { pastedTextDraft = pastedText }; pasteEditing = !pasteEditing },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (pasteEditing) LIVE_GOLD else Color(0xFFF5F3EC)),
+                    shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).height(44.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp)
+                ) { Text("📜 TEXT", color = Color(0xFF12203D), fontWeight = FontWeight.Bold, fontSize = 10.5.sp, maxLines = 1) }
             }
-
-            // ---- Below Mute/Stop: PDF upload AND Paste+Save always together here,
-            // regardless of which mode the top switcher currently shows. ----
-            Spacer(Modifier.height(10.dp))
-
-            Button(
-                onClick = { pdfPickerLauncher.launch("application/pdf") }, enabled = !uploading,
-                colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD), shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().height(44.dp)
-            ) {
-                if (uploading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                else Text(if (slidePdf.isBlank()) "📂 Share PDF Files" else "📂 Change PDF Files", color = Color(0xFF12203D), fontWeight = FontWeight.Bold)
-            }
-
-            Spacer(Modifier.height(10.dp))
 
             if (pasteEditing) {
+                Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = pastedTextDraft, onValueChange = { pastedTextDraft = it },
                     modifier = Modifier.fillMaxWidth().height(90.dp),
@@ -604,16 +606,6 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().height(42.dp)
                 ) { Text("💾 Save to Board", color = Color(0xFF12203D), fontWeight = FontWeight.Bold) }
-            } else {
-                Button(
-                    onClick = {
-                        pastedTextDraft = pastedText
-                        pasteEditing = true
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF5F3EC)),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(42.dp)
-                ) { Text(if (pastedText.isBlank()) "📜 Paste Text" else "✏️ Edit Text", color = Color(0xFF12203D), fontWeight = FontWeight.Bold) }
             }
 
             if (msg.isNotEmpty()) { Spacer(Modifier.height(10.dp)); Text(msg, fontSize = 12.sp, color = LIVE_GOLD, textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
