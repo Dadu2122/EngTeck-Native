@@ -125,6 +125,7 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
     var uploading by remember { mutableStateOf(false) }
     var repeatCount by remember { mutableStateOf(0) }
     var participantCount by remember { mutableStateOf(0) }
+    var pendingRequests by remember { mutableStateOf<List<Triple<String, String, String>>>(emptyList()) } // key, name, mobile
 
     var tool by remember { mutableStateOf(AnnotationTool.POINTER) }
     var penColor by remember { mutableStateOf(TOOL_COLORS[0]) }
@@ -180,6 +181,19 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
                 override fun onDataChange(s: com.google.firebase.database.DataSnapshot) { repeatCount = s.childrenCount.toInt() }
                 override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
+        FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/joinRequests")
+            .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(s: com.google.firebase.database.DataSnapshot) {
+                    pendingRequests = s.children.mapNotNull { c ->
+                        val status = c.child("status").getValue(String::class.java) ?: "pending"
+                        if (status != "pending") return@mapNotNull null
+                        val name = c.child("name").getValue(String::class.java) ?: "Student"
+                        val mobile = c.child("mobile").getValue(String::class.java) ?: ""
+                        Triple(c.key ?: "", name, mobile)
+                    }
+                }
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
+            })
     }
 
     LaunchedEffect(slidePdf, currentPage) {
@@ -221,6 +235,7 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
         connected = false; msg = ""; participantCount = 0
         FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/active").setValue(false)
         FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/repeatRequests").removeValue()
+        FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/joinRequests").removeValue()
     }
 
     fun goToPage(page: Int) {
@@ -383,6 +398,46 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
         }
 
         Column(modifier = Modifier.fillMaxWidth().background(LIVE_NAVY).padding(horizontal = 16.dp, vertical = 16.dp)) {
+
+            if (pendingRequests.isNotEmpty()) {
+                Text("🔔 Join Requests", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = LIVE_GOLD, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                Spacer(Modifier.height(8.dp))
+                pendingRequests.forEach { (key, name, mobile) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(name, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            if (mobile.isNotEmpty()) Text(mobile, fontSize = 10.5.sp, color = Color.White.copy(alpha = 0.6f))
+                        }
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFF1F7A3D), RoundedCornerShape(10.dp))
+                                .clickable {
+                                    FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/joinRequests")
+                                        .child(key).child("status").setValue("approved")
+                                }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) { Text("Approve", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        Spacer(Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFFC0392B), RoundedCornerShape(10.dp))
+                                .clickable {
+                                    FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/joinRequests")
+                                        .child(key).child("status").setValue("rejected")
+                                }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) { Text("Reject", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+            }
 
             if (repeatCount > 0) {
                 Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFFCF3D9), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 10.dp)) {
