@@ -12,18 +12,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.google.firebase.database.FirebaseDatabase
 
 data class ProfileContent(
-    val teacherLine: String = "Teacher Name • M.A., B.Ed.",
+    val teacherName: String = "Teacher Name",
+    val roleLabel: String = "FACULTY",
     val qual1: String = "M.A. English, B.Ed.",
     val qual2: String = "UGC-NET, UPTET",
-    val qual3: String = "Assistant Teacher",
-    val qual4: String = "8+ Years Teaching"
+    val teacherPhotoBase64: String? = null
 )
 
 @Composable
@@ -36,11 +38,11 @@ fun TeacherProfileCard() {
             .addOnSuccessListener { snapshot ->
                 if (snapshot.exists()) {
                     content = ProfileContent(
-                        teacherLine = snapshot.child("teacherLine").getValue(String::class.java) ?: content.teacherLine,
+                        teacherName = snapshot.child("teacherName").getValue(String::class.java) ?: content.teacherName,
+                        roleLabel = snapshot.child("roleLabel").getValue(String::class.java) ?: content.roleLabel,
                         qual1 = snapshot.child("qual1").getValue(String::class.java) ?: content.qual1,
                         qual2 = snapshot.child("qual2").getValue(String::class.java) ?: content.qual2,
-                        qual3 = snapshot.child("qual3").getValue(String::class.java) ?: content.qual3,
-                        qual4 = snapshot.child("qual4").getValue(String::class.java) ?: content.qual4
+                        teacherPhotoBase64 = snapshot.child("teacherPhotoBase64").getValue(String::class.java)
                     )
                 }
             }
@@ -61,51 +63,49 @@ fun TeacherProfileCard() {
                 .padding(horizontal = 20.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(modifier = Modifier.size(112.dp), contentAlignment = Alignment.BottomEnd) {
-                Box(
-                    modifier = Modifier
-                        .size(112.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Brush.linearGradient(listOf(Color(0xFFDFE6EF), Color(0xFFC7D0DD))))
-                        .border(3.dp, Color(0xFFD4A017), RoundedCornerShape(20.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
+            Box(
+                modifier = Modifier
+                    .size(120.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Brush.linearGradient(listOf(Color(0xFFDFE6EF), Color(0xFFC7D0DD))))
+                    .border(3.dp, Color(0xFFD4A017), RoundedCornerShape(20.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (!content.teacherPhotoBase64.isNullOrBlank()) {
+                    AsyncImage(
+                        model = content.teacherPhotoBase64,
+                        contentDescription = content.teacherName,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(17.dp))
+                    )
+                } else {
                     Text("Photo", fontSize = 11.sp, color = Color(0xFF5B5F6B), fontWeight = FontWeight.SemiBold)
-                }
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .offset(x = 4.dp, y = 4.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF1B6B79))
-                        .border(3.dp, Color.White, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("✏", fontSize = 12.sp, color = Color.White)
                 }
             }
 
             Spacer(Modifier.height(16.dp))
-            HorizontalDivider(color = Color(0xFFE3DFD3))
-            Text(
-                content.teacherLine,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1A1A1A),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-            HorizontalDivider(color = Color(0xFFE3DFD3))
+
+            // Name + role bar — matches the website's navy "AMAR SH • FACULTY" pill.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF12203D))
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(content.teacherName, color = Color(0xFFD4A017), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(10.dp))
+                Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(Color(0xFF1F9D55)))
+                Spacer(Modifier.width(6.dp))
+                Text(content.roleLabel, color = Color(0xFF1F9D55), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
 
             Spacer(Modifier.height(18.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 QualCard("QUALIFICATION", content.qual1, Modifier.weight(1f))
                 QualCard("EXAMS QUALIFIED", content.qual2, Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                QualCard("CURRENT STATUS", content.qual3, Modifier.weight(1f))
-                QualCard("EXPERIENCE", content.qual4, Modifier.weight(1f))
             }
 
             Spacer(Modifier.height(14.dp))
