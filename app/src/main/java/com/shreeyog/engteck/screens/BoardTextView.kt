@@ -121,7 +121,8 @@ fun BoardPastedTextView(pastedText: String, modifier: Modifier = Modifier, textC
                         fontSize = 15.sp,
                         color = textColor,
                         lineHeight = 24.sp,
-                        textAlign = if (block.isPoem) TextAlign.Start else TextAlign.Justify
+                        textAlign = if (block.isPoem) TextAlign.Start else TextAlign.Justify,
+                        lineBreak = androidx.compose.ui.text.style.LineBreak.Paragraph
                     ),
                     onClick = { offset ->
                         annotated.getStringAnnotations(tag = "WORD", start = offset, end = offset).firstOrNull()?.let { ann ->
