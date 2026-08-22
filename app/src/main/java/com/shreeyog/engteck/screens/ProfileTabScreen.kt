@@ -18,6 +18,7 @@ fun ProfileTabScreen() {
     var showAdminLogin by remember { mutableStateOf(false) }
     var isAdmin by remember { mutableStateOf(false) }
     var adminName by remember { mutableStateOf("") }
+    var adminTeacherKey by remember { mutableStateOf("") }
     var tapCount by remember { mutableStateOf(0) }
     var lastTapTime by remember { mutableStateOf(0L) }
 
@@ -25,13 +26,14 @@ fun ProfileTabScreen() {
         isAdmin -> {
             Column(Modifier.fillMaxSize()) {
                 TextButton(onClick = { isAdmin = false }) { Text("‹ Logout") }
-                AdminPanelScreen()
+                AdminPanelScreen(teacherKey = adminTeacherKey, teacherName = adminName)
             }
         }
         showAdminLogin -> {
             Column(Modifier.fillMaxSize()) {
                 TextButton(onClick = { showAdminLogin = false }) { Text("‹ Back") }
-                AdminLoginScreen(onLoginSuccess = { _, name ->
+                AdminLoginScreen(onLoginSuccess = { key, name ->
+                    adminTeacherKey = key
                     adminName = name
                     isAdmin = true
                     showAdminLogin = false
@@ -76,7 +78,7 @@ fun ProfileTabScreen() {
 }
 
 @Composable
-private fun AdminPanelScreen() {
+private fun AdminPanelScreen(teacherKey: String, teacherName: String) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -87,8 +89,9 @@ private fun AdminPanelScreen() {
         Spacer(Modifier.height(16.dp))
 
         AdminAccordionSection("Content Editor", "📝") { AdminContentEditorCard() }
-        AdminAccordionSection("Live Class Control", "🔴") { AdminLiveClassCard() }
+        AdminAccordionSection("Live Class Control", "🔴") { AdminLiveClassCard(teacherKey = teacherKey, teacherName = teacherName) }
         Spacer(Modifier.height(10.dp))
+        AdminAccordionSection("Live Class — Teachers", "👥") { AdminTeachersCard() }
         Spacer(Modifier.height(10.dp))
         AdminAccordionSection("Free PDF Sets", "📄") { AdminFreePdfSetsCard() }
         Spacer(Modifier.height(10.dp))
@@ -116,5 +119,3 @@ private fun AdminPanelScreen() {
         Spacer(Modifier.height(30.dp))
     }
 }
-
-
