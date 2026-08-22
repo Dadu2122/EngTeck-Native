@@ -71,4 +71,5 @@ dependencies {
     implementation 'io.coil-kt:coil-compose:2.6.0'
     implementation 'com.razorpay:checkout:1.6.+'
     implementation 'io.agora.rtc:voice-sdk:4.3.1'
+    implementation 'com.pierfrancescosoffritti.androidyoutubeplayer:core:12.1.0'
 }
