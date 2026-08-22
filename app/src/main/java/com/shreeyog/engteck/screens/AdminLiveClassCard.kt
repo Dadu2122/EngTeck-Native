@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -546,7 +547,10 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
                 }
             }
             Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 listOf("Thin" to 3f, "Medium" to 6f, "Thick" to 12f).forEach { (label, w) ->
                     Box(
                         modifier = Modifier.background(if (penWidth == w) LIVE_GOLD else LIVE_NAVY, RoundedCornerShape(100.dp))
@@ -555,7 +559,7 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(
                     onClick = { muted = !muted; AgoraLiveAudio.setMuted(muted) },
@@ -571,7 +575,7 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
 
             // ---- Below Mute/Stop: PDF upload AND Paste+Save always together here,
             // regardless of which mode the top switcher currently shows. ----
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(10.dp))
 
             Button(
                 onClick = { pdfPickerLauncher.launch("application/pdf") }, enabled = !uploading,
