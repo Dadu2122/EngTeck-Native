@@ -245,7 +245,11 @@ fun AdminLiveClassCard() {
     }
 
     // ---------- Connected: full dark "Smart Digital Board" layout ----------
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+    ) {
 
         // Dark status strip: S.D.BOARD | Connected: N | ON_AIR — monospace labels.
         Row(
@@ -279,7 +283,7 @@ fun AdminLiveClassCard() {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(640.dp)
+                .height(420.dp)
                 .background(Color.White)
                 .border(0.75.dp, Color.Black)
                 .onSizeChanged { boardSizePx = it }
