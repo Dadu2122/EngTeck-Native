@@ -101,7 +101,7 @@ private fun PremiumLibraryShell(
     var pendingCatKey by remember { mutableStateOf("") }
     var pendingCatLabel by remember { mutableStateOf("") }
 
-    var checkingAccess by remember { mutableStateOf(false) }
+    var checkingCatKey by remember { mutableStateOf("") }
     var viewingCatLabel by remember { mutableStateOf("") }
     var viewingItems by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
 
@@ -130,21 +130,21 @@ private fun PremiumLibraryShell(
             showMobileDialog = true
             return
         }
-        checkingAccess = true
+        checkingCatKey = catKey
         unlockMsg = ""
         FirebaseDatabase.getInstance().getReference("paidVideoCategories").child(currentMobile).child(catKey)
             .get()
             .addOnSuccessListener { snap ->
                 val isPaid = snap.getValue(Boolean::class.java) ?: false
                 if (!isPaid) {
-                    checkingAccess = false
+                    checkingCatKey = ""
                     unlockMsg = "$catLabel abhi unlock nahi hai — payment ke baad access milega. Teacher se sampark karein."
                     return@addOnSuccessListener
                 }
                 FirebaseDatabase.getInstance().getReference(firebasePath).child(catKey).child(countChildPath)
                     .get()
                     .addOnSuccessListener { itemsSnap ->
-                        checkingAccess = false
+                        checkingCatKey = ""
                         viewingItems = itemsSnap.children.map { c ->
                             LibraryItem(
                                 title = c.child("title").getValue(String::class.java) ?: "Untitled",
@@ -154,9 +154,9 @@ private fun PremiumLibraryShell(
                         }
                         viewingCatLabel = catLabel
                     }
-                    .addOnFailureListener { checkingAccess = false; unlockMsg = "Load karne me dikkat aayi, dobara try karein." }
+                    .addOnFailureListener { checkingCatKey = ""; unlockMsg = "Load karne me dikkat aayi, dobara try karein." }
             }
-            .addOnFailureListener { checkingAccess = false; unlockMsg = "Load karne me dikkat aayi, dobara try karein." }
+            .addOnFailureListener { checkingCatKey = ""; unlockMsg = "Load karne me dikkat aayi, dobara try karein." }
     }
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp)) {
@@ -179,7 +179,7 @@ private fun PremiumLibraryShell(
                     .padding(bottom = 10.dp)
                     .background(Color(0xFFF5F3EC), RoundedCornerShape(14.dp))
                     .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(14.dp))
-                    .clickable(enabled = canOpenItems && !checkingAccess) { openCategory(key, catLabel) }
+                    .clickable(enabled = canOpenItems && checkingCatKey.isEmpty()) { openCategory(key, catLabel) }
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -190,12 +190,12 @@ private fun PremiumLibraryShell(
                 }
                 Button(
                     onClick = { openCategory(key, catLabel) },
-                    enabled = !checkingAccess,
+                    enabled = checkingCatKey.isEmpty(),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4A017)),
                     shape = RoundedCornerShape(100.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    if (checkingAccess) {
+                    if (checkingCatKey == key) {
                         CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = Color(0xFF12203D))
                     } else {
                         Text("🔒 Unlock", color = Color(0xFF12203D), fontSize = 12.sp, fontWeight = FontWeight.Bold)
