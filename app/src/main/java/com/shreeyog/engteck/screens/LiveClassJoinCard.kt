@@ -126,6 +126,10 @@ fun LiveClassJoinCard() {
     var zoomOffsetY by remember { mutableStateOf(0f) }
     var boardSizePx by remember { mutableStateOf(IntSize.Zero) }
 
+    // "Knock to join" — student's request sits here until the teacher approves it.
+    var requestKey by remember { mutableStateOf("") }
+    var requestStatus by remember { mutableStateOf("") } // "", "pending", "approved", "rejected"
+
     fun doJoin() {
         joining = true
         joinMsg = "Connecting to live class..."
@@ -143,10 +147,52 @@ fun LiveClassJoinCard() {
         AgoraLiveAudio.join(context, "live_$selectedTeacherKey", uid)
     }
 
+    fun cancelJoinRequest() {
+        if (requestKey.isNotEmpty() && selectedTeacherKey.isNotEmpty()) {
+            FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/joinRequests")
+                .child(requestKey).removeValue()
+        }
+        requestKey = ""
+        requestStatus = ""
+        joinMsg = ""
+    }
+
+    fun sendJoinRequest() {
+        requestStatus = "pending"
+        joinMsg = ""
+        val ref = FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/joinRequests").push()
+        requestKey = ref.key ?: ""
+        ref.setValue(
+            mapOf(
+                "name" to name,
+                "mobile" to mobile,
+                "timestamp" to System.currentTimeMillis(),
+                "status" to "pending"
+            )
+        )
+        ref.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+            override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                val status = snapshot.child("status").getValue(String::class.java) ?: return
+                requestStatus = status
+                when (status) {
+                    "approved" -> {
+                        snapshot.ref.removeValue()
+                        requestKey = ""
+                        doJoin()
+                    }
+                    "rejected" -> {
+                        joinMsg = "Teacher ne abhi request accept nahi ki — thodi der baad try karein."
+                    }
+                }
+            }
+            override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+        })
+    }
+
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) doJoin()
+        if (granted) sendJoinRequest()
         else joinMsg = "Mic permission is needed to join the live class."
     }
 
@@ -162,7 +208,7 @@ fun LiveClassJoinCard() {
         val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
             context, Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
-        if (hasPermission) doJoin() else micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        if (hasPermission) sendJoinRequest() else micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
 
     fun sendRepeatRequest() {
@@ -180,6 +226,10 @@ fun LiveClassJoinCard() {
                     FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/repeatRequests")
                         .child(studentUid.toString()).removeValue()
                 }
+            }
+            if (requestKey.isNotEmpty() && selectedTeacherKey.isNotEmpty()) {
+                FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/joinRequests")
+                    .child(requestKey).removeValue()
             }
             AgoraLiveAudio.onJoined = null
             AgoraLiveAudio.onError = null
@@ -391,17 +441,37 @@ fun LiveClassJoinCard() {
                 }
 
                 Spacer(Modifier.height(16.dp))
-                Button(
-                    onClick = { startJoinFlow() },
-                    enabled = !joining,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE85D4C)),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().height(48.dp)
-                ) {
-                    if (joining) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    } else {
-                        Text("Join Live Class", fontWeight = FontWeight.Bold, color = Color.White)
+                if (requestStatus == "pending") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFFCF3D9), RoundedCornerShape(14.dp))
+                            .padding(vertical = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Color(0xFF946B00), modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.height(8.dp))
+                            Text("Teacher ki approval ka wait ho raha hai…", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF946B00), textAlign = TextAlign.Center)
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(onClick = { cancelJoinRequest() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Cancel Request", color = Color(0xFFC0392B))
+                    }
+                } else {
+                    Button(
+                        onClick = { startJoinFlow() },
+                        enabled = !joining,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE85D4C)),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                    ) {
+                        if (joining) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text("Join Live Class", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
                     }
                 }
 
