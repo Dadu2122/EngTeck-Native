@@ -139,6 +139,10 @@ fun LiveClassJoinCard() {
             joining = false
             joined = true
             joinMsg = ""
+            // Presence record so the teacher can see who's actually connected right now.
+            FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/participants")
+                .child(uid.toString())
+                .setValue(mapOf("name" to name, "mobile" to mobile, "joinedAt" to System.currentTimeMillis()))
         }
         AgoraLiveAudio.onError = { err ->
             joining = false
@@ -224,6 +228,8 @@ fun LiveClassJoinCard() {
                 AgoraLiveAudio.leave()
                 if (studentUid != 0) {
                     FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/repeatRequests")
+                        .child(studentUid.toString()).removeValue()
+                    FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/participants")
                         .child(studentUid.toString()).removeValue()
                 }
             }
@@ -596,6 +602,8 @@ fun LiveClassJoinCard() {
                             AgoraLiveAudio.leave()
                             if (studentUid != 0) {
                                 FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/repeatRequests")
+                                    .child(studentUid.toString()).removeValue()
+                                FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/participants")
                                     .child(studentUid.toString()).removeValue()
                             }
                             joined = false
