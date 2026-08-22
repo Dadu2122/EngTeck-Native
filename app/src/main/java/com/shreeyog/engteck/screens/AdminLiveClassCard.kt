@@ -8,6 +8,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -245,7 +246,11 @@ fun AdminLiveClassCard() {
     }
 
     // ---------- Connected: full dark "Smart Digital Board" layout ----------
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+    ) {
 
         // Dark status strip: S.D.BOARD | Connected: N | ON_AIR — monospace labels.
         Row(
@@ -279,53 +284,62 @@ fun AdminLiveClassCard() {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(420.dp)
+                .height(560.dp)
                 .background(Color.White)
                 .border(0.75.dp, Color.Black)
+                .clip(androidx.compose.ui.graphics.RectangleShape)
                 .onSizeChanged { boardSizePx = it }
-                .graphicsLayer(
-                    scaleX = zoomScale, scaleY = zoomScale,
-                    translationX = zoomOffsetX, translationY = zoomOffsetY
-                )
         ) {
-            when (boardMode) {
-                BoardMode.PDF -> {
-                    if (slideBitmap != null) {
-                        Image(bitmap = slideBitmap!!.asImageBitmap(), contentDescription = "Slide", contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
-                        } else {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(if (slidePdf.isBlank()) "No PDF shared yet." else "Loading...", fontSize = 12.sp, color = Color(0xFF8A8F99))
+            // Zoom/pan applied only to this inner layer — the outer Box's
+            // border above stays fixed size, so it never thickens into a
+            // visible line across the slide when zoomScale > 1.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = zoomScale, scaleY = zoomScale,
+                        translationX = zoomOffsetX, translationY = zoomOffsetY
+                    )
+            ) {
+                when (boardMode) {
+                    BoardMode.PDF -> {
+                        if (slideBitmap != null) {
+                            Image(bitmap = slideBitmap!!.asImageBitmap(), contentDescription = "Slide", contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
+                            } else {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(if (slidePdf.isBlank()) "No PDF shared yet." else "Loading...", fontSize = 12.sp, color = Color(0xFF8A8F99))
+                                }
                             }
                         }
-                    }
-                    BoardMode.PASTE_TEXT -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                        ) {
-                            Text(pastedText.ifBlank { "Paste text below to show it here." }, fontSize = 15.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp)
+                        BoardMode.PASTE_TEXT -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                Text(pastedText.ifBlank { "Paste text below to show it here." }, fontSize = 15.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp)
+                            }
+                        }
+                        BoardMode.WHITEBOARD -> {
+                            Box(Modifier.fillMaxSize())
                         }
                     }
-                    BoardMode.WHITEBOARD -> {
-                        Box(Modifier.fillMaxSize())
-                    }
-                }
-                AnnotationCanvas(
-                    modifier = Modifier.fillMaxSize(),
-                    tool = tool, color = penColor, penWidth = penWidth,
-                    strokes = strokes, redoStack = redoStack,
-                    swipeEnabled = boardMode == BoardMode.PDF,
-                    onSwipeLeft = { if (currentPage < pageCount - 1) goToPage(currentPage + 1) },
-                    onSwipeRight = { if (currentPage > 0) goToPage(currentPage - 1) },
-                    onZoomPan = { zoomChange, panChange ->
-                        zoomScale = (zoomScale * zoomChange).coerceIn(1f, 4f)
-                        val maxOffsetX = (boardSizePx.width * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
-                        val maxOffsetY = (boardSizePx.height * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
-                        zoomOffsetX = (zoomOffsetX + panChange.x).coerceIn(-maxOffsetX, maxOffsetX)
-                        zoomOffsetY = (zoomOffsetY + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
-                    }
-                )
+                    AnnotationCanvas(
+                        modifier = Modifier.fillMaxSize(),
+                        tool = tool, color = penColor, penWidth = penWidth,
+                        strokes = strokes, redoStack = redoStack,
+                        swipeEnabled = boardMode == BoardMode.PDF,
+                        onSwipeLeft = { if (currentPage < pageCount - 1) goToPage(currentPage + 1) },
+                        onSwipeRight = { if (currentPage > 0) goToPage(currentPage - 1) },
+                        onZoomPan = { zoomChange, panChange ->
+                            zoomScale = (zoomScale * zoomChange).coerceIn(1f, 4f)
+                            val maxOffsetX = (boardSizePx.width * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
+                            val maxOffsetY = (boardSizePx.height * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
+                            zoomOffsetX = (zoomOffsetX + panChange.x).coerceIn(-maxOffsetX, maxOffsetX)
+                            zoomOffsetY = (zoomOffsetY + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
+                        }
+                    )
+            }
         }
 
         // Dark page-nav strip under the board
@@ -520,3 +534,4 @@ fun AdminLiveClassCard() {
         }
     }
 }
+
