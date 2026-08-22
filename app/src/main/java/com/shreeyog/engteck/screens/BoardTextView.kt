@@ -1,16 +1,18 @@
 package com.shreeyog.engteck.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,9 +85,21 @@ private suspend fun fetchWordMeaning(word: String): String = withContext(Dispatc
     }
 }
 
+private fun wordAtOffset(text: String, offset: Int): String {
+    if (text.isEmpty()) return ""
+    val safeOffset = offset.coerceIn(0, text.length - 1)
+    if (!text[safeOffset].isLetterOrDigit()) return ""
+    var start = safeOffset
+    var end = safeOffset
+    while (start > 0 && text[start - 1].isLetterOrDigit()) start--
+    while (end < text.length - 1 && text[end + 1].isLetterOrDigit()) end++
+    return text.substring(start, end + 1)
+}
+
 // Drop-in replacement for the plain "Paste Text" board display. Renders
-// justified prose / preserved poem stanzas, and lets students tap any word
-// to see its meaning in a small popup.
+// justified prose / preserved poem stanzas (using the same proven Text +
+// LineBreak.Paragraph approach as the app's existing JustifiedText), and
+// lets students tap any word to see its meaning in a small popup.
 @Composable
 fun BoardPastedTextView(pastedText: String, modifier: Modifier = Modifier, textColor: Color = Color(0xFF1A1A1A)) {
     val scope = rememberCoroutineScope()
@@ -95,49 +109,45 @@ fun BoardPastedTextView(pastedText: String, modifier: Modifier = Modifier, textC
 
     val blocks = remember(pastedText) { formatPastedBoardText(pastedText) }
 
+    fun onWordTapped(word: String) {
+        val cleaned = word.trim(',', '.', ';', ':', '"', '\'', '!', '?', '(', ')', '—', '-')
+        if (cleaned.isBlank()) return
+        selectedWord = cleaned
+        loadingDef = true
+        definition = ""
+        scope.launch {
+            definition = fetchWordMeaning(cleaned)
+            loadingDef = false
+        }
+    }
+
     Column(modifier = modifier) {
         if (blocks.isEmpty()) {
             Text("Paste text below to show it here.", fontSize = 15.sp, color = textColor)
         } else {
             blocks.forEach { block ->
-                val annotated = remember(block.text) {
-                    buildAnnotatedString {
-                        var i = 0
-                        val regex = Regex("\\S+")
-                        for (match in regex.findAll(block.text)) {
-                            if (match.range.first > i) append(block.text.substring(i, match.range.first))
-                            pushStringAnnotation(tag = "WORD", annotation = match.value)
-                            append(match.value)
-                            pop()
-                            i = match.range.last + 1
-                        }
-                        if (i < block.text.length) append(block.text.substring(i))
-                    }
-                }
-                ClickableText(
-                    text = annotated,
-                    modifier = Modifier.fillMaxWidth(),
+                var layoutResult by remember(block.text) { mutableStateOf<TextLayoutResult?>(null) }
+                Text(
+                    text = block.text,
                     style = TextStyle(
                         fontSize = 15.sp,
                         color = textColor,
                         lineHeight = 24.sp,
                         textAlign = if (block.isPoem) TextAlign.Start else TextAlign.Justify,
-                        lineBreak = androidx.compose.ui.text.style.LineBreak.Paragraph
+                        lineBreak = LineBreak.Paragraph
                     ),
-                    onClick = { offset ->
-                        annotated.getStringAnnotations(tag = "WORD", start = offset, end = offset).firstOrNull()?.let { ann ->
-                            val word = ann.item.trim(',', '.', ';', ':', '"', '\'', '!', '?', '(', ')', '—', '-')
-                            if (word.isNotBlank()) {
-                                selectedWord = word
-                                loadingDef = true
-                                definition = ""
-                                scope.launch {
-                                    definition = fetchWordMeaning(word)
-                                    loadingDef = false
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(block.text) {
+                            detectTapGestures { tapPos ->
+                                layoutResult?.let { layout ->
+                                    val charOffset = layout.getOffsetForPosition(tapPos)
+                                    val word = wordAtOffset(block.text, charOffset)
+                                    if (word.isNotBlank()) onWordTapped(word)
                                 }
                             }
-                        }
-                    }
+                        },
+                    onTextLayout = { layoutResult = it }
                 )
                 Spacer(Modifier.height(16.dp))
             }
