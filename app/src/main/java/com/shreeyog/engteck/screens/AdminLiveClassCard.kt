@@ -184,11 +184,18 @@ fun AdminLiveClassCard() {
 
     LaunchedEffect(slidePdf, currentPage) {
         if (slidePdf.isNotBlank()) {
-            val result = withContext(Dispatchers.Default) {
-                Pair(PdfSlideRenderer.pageCount(context, slidePdf), PdfSlideRenderer.renderPage(context, slidePdf, currentPage))
+            try {
+                val result = withContext(Dispatchers.Default) {
+                    Pair(PdfSlideRenderer.pageCount(context, slidePdf), PdfSlideRenderer.renderPage(context, slidePdf, currentPage))
+                }
+                pageCount = result.first
+                slideBitmap = result.second
+            } catch (e: Exception) {
+                android.util.Log.e("SDBoard", "PDF render failed", e)
+                slideBitmap = null
+                pageCount = 0
+                msg = "Could not load the shared PDF — try sharing it again."
             }
-            pageCount = result.first
-            slideBitmap = result.second
         } else {
             slideBitmap = null; pageCount = 0
         }
@@ -534,4 +541,3 @@ fun AdminLiveClassCard() {
         }
     }
 }
-
