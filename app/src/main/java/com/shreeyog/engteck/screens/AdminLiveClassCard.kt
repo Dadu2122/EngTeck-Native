@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -53,9 +54,19 @@ private val LIVE_GOLD = Color(0xFFD4A017)
 private val LIVE_GREEN = Color(0xFF39FF9E)
 
 // Side padding of the parent screen this card sits in — used to make the board
-// bleed edge-to-edge via offset() (which allows negative values safely, unlike
-// padding() which crashes on negative numbers).
+// bleed edge-to-edge, escaping AdminPanelScreen's fixed 16dp padding.
 private val SCREEN_SIDE_PADDING = 16.dp
+
+// Widens the composable to cover the parent's side padding and shifts it left
+// to align flush with the real screen edge — a proper full-bleed technique
+// (unlike offset() alone, this actually changes the measured width too).
+private fun Modifier.fullBleed(padding: androidx.compose.ui.unit.Dp): Modifier = this.layout { measurable, constraints ->
+    val extraPx = (padding * 2).roundToPx()
+    val placeable = measurable.measure(constraints.copy(maxWidth = constraints.maxWidth + extraPx))
+    layout(placeable.width, placeable.height) {
+        placeable.place(-padding.roundToPx(), 0)
+    }
+}
 
 private enum class BoardMode { PDF, PASTE_TEXT, WHITEBOARD }
 
@@ -279,7 +290,7 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
     }
 
     // ---------- Connected: full dark "Smart Digital Board" layout ----------
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxWidth().fullBleed(SCREEN_SIDE_PADDING)) {
 
         // Dark status strip: S.D.BOARD | Connected: N | ON_AIR — monospace labels.
         Row(
