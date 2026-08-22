@@ -89,6 +89,8 @@ private fun AdminPanelScreen(teacherKey: String, teacherName: String) {
         Spacer(Modifier.height(16.dp))
 
         AdminAccordionSection("Content Editor", "📝") { AdminContentEditorCard() }
+        Spacer(Modifier.height(10.dp))
+        AdminAccordionSection("Teacher Profile Card", "🧑‍🏫") { AdminTeacherProfileCard() }
         AdminAccordionSection("Live Class Control", "🔴") { AdminLiveClassCard(teacherKey = teacherKey, teacherName = teacherName) }
         Spacer(Modifier.height(10.dp))
         AdminAccordionSection("Live Class — Teachers", "👥") { AdminTeachersCard() }
