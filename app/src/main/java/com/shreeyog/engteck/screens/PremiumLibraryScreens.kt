@@ -330,18 +330,10 @@ private fun VideoShelf(items: List<LibraryItem>, expandedIndex: Int?, onToggleEx
                             settings.mediaPlaybackRequiresUserGesture = false
                             settings.loadWithOverviewMode = true
                             settings.useWideViewPort = true
+                            settings.userAgentString = settings.userAgentString.replace("; wv", "")
                             webViewClient = WebViewClient()
                             webChromeClient = WebChromeClient()
-                            val html = """
-                                <!DOCTYPE html>
-                                <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-                                <body style="margin:0;padding:0;background:#000;">
-                                <iframe width="100%" height="100%" style="position:fixed;top:0;left:0;"
-                                    src="https://www.youtube.com/embed/$ytId?autoplay=1&playsinline=1&rel=0"
-                                    frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
-                                </body></html>
-                            """.trimIndent()
-                            loadDataWithBaseURL("https://www.youtube.com", html, "text/html", "utf-8", null)
+                            loadUrl("https://www.youtube.com/embed/$ytId?autoplay=1&playsinline=1&rel=0")
                         }
                     },
                     modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
@@ -362,6 +354,13 @@ private fun VideoShelf(items: List<LibraryItem>, expandedIndex: Int?, onToggleEx
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(expandedItem.title, color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                if (ytId != null) {
+                    TextButton(onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://youtu.be/$ytId")))
+                    }) {
+                        Text("▶ YouTube", color = Color(0xFF3B6EA8), fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                    }
+                }
                 TextButton(onClick = { onToggleExpand(items.indexOf(expandedItem)) }) {
                     Text("✕ Close", color = Color(0xFFD4A017), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
