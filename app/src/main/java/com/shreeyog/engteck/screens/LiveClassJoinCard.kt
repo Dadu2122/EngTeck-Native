@@ -14,20 +14,27 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.database.FirebaseDatabase
@@ -104,6 +111,12 @@ fun LiveClassJoinCard() {
     var slideBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var repeatSent by remember { mutableStateOf(false) }
     var participantCount by remember { mutableStateOf(1) } // at least this student
+
+    // Two-finger pinch-zoom + pan on the slide, same behaviour as the teacher's board.
+    var zoomScale by remember { mutableStateOf(1f) }
+    var zoomOffsetX by remember { mutableStateOf(0f) }
+    var zoomOffsetY by remember { mutableStateOf(0f) }
+    var boardSizePx by remember { mutableStateOf(IntSize.Zero) }
 
     fun doJoin() {
         joining = true
@@ -199,9 +212,15 @@ fun LiveClassJoinCard() {
         } else {
             slideBitmap = null
         }
+        // Reset zoom whenever the page changes so the student doesn't stay zoomed-in on the next slide.
+        zoomScale = 1f; zoomOffsetX = 0f; zoomOffsetY = 0f
     }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+    ) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp)) {
             Text(
                 "LIVE",
@@ -333,12 +352,27 @@ fun LiveClassJoinCard() {
                 // Plain fillMaxWidth — no offset/measuring needed anymore, since
                 // the root Column above no longer wraps this section in any
                 // padding (HomeScreen.kt confirmed there's none above it either).
+                // Pinch-to-zoom + pan via graphicsLayer, same pattern as the teacher's board.
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(640.dp)
+                        .height(420.dp)
                         .background(Color.White)
                         .border(0.75.dp, Color.Black)
+                        .onSizeChanged { boardSizePx = it }
+                        .graphicsLayer(
+                            scaleX = zoomScale, scaleY = zoomScale,
+                            translationX = zoomOffsetX, translationY = zoomOffsetY
+                        )
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, gestureZoom, _ ->
+                                zoomScale = (zoomScale * gestureZoom).coerceIn(1f, 4f)
+                                val maxOffsetX = (boardSizePx.width * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
+                                val maxOffsetY = (boardSizePx.height * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
+                                zoomOffsetX = (zoomOffsetX + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
+                                zoomOffsetY = (zoomOffsetY + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
+                            }
+                        }
                 ) {
                     if (slideBitmap != null) {
                         Image(
@@ -359,24 +393,34 @@ fun LiveClassJoinCard() {
                 }
 
                 Spacer(Modifier.height(14.dp))
-                Row(modifier = Modifier.padding(horizontal = 22.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // fillMaxWidth + weight(1f) on each button so all three (Mute,
+                // Please Repeat, Leave) always fit within the screen width —
+                // nothing gets pushed off-screen anymore.
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     Button(
                         onClick = {
                             muted = !muted
                             AgoraLiveAudio.setMuted(muted)
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = if (muted) Color(0xFF8A8F99) else Color(0xFF1B6B79)),
-                        shape = RoundedCornerShape(14.dp)
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
                     ) {
-                        Text(if (muted) "🔇 Unmute" else "🎤 Mute", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(if (muted) "🔇 Unmute" else "🎤 Mute", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
                     }
                     Button(
                         onClick = { sendRepeatRequest() },
                         enabled = !repeatSent,
                         colors = ButtonDefaults.buttonColors(containerColor = if (repeatSent) Color(0xFF8A8F99) else SLIVE_GOLD),
-                        shape = RoundedCornerShape(14.dp)
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
                     ) {
-                        Text(if (repeatSent) "🔁 Sent" else "🔁 Please Repeat", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(if (repeatSent) "🔁 Sent" else "🔁 Repeat", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
                     }
                     Button(
                         onClick = {
@@ -389,9 +433,11 @@ fun LiveClassJoinCard() {
                             joinMsg = ""
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC0392B)),
-                        shape = RoundedCornerShape(14.dp)
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
                     ) {
-                        Text("Leave", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Leave", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
                     }
                 }
 
