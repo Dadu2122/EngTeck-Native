@@ -83,41 +83,44 @@ private fun AdminPanelScreen(teacherKey: String, teacherName: String) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(vertical = 16.dp)
     ) {
-        Text("Admin Panel", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
+        Text("Admin Panel", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D), modifier = Modifier.padding(horizontal = 16.dp))
         Spacer(Modifier.height(16.dp))
 
-        AdminAccordionSection("Content Editor", "📝") { AdminContentEditorCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Content Editor", "📝") { AdminContentEditorCard() } }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Teacher Profile Card", "🧑‍🏫") { AdminTeacherProfileCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Teacher Profile Card", "🧑‍🏫") { AdminTeacherProfileCard() } }
+        Spacer(Modifier.height(10.dp))
+        // No horizontal padding here on purpose — this is the section that needs to
+        // bleed to the real screen edges, so it's never constrained in the first place.
         AdminAccordionSection("Live Class Control", "🔴", fullBleedContent = true) { AdminLiveClassCard(teacherKey = teacherKey, teacherName = teacherName) }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Live Class — Teachers", "👥") { AdminTeachersCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Live Class — Teachers", "👥") { AdminTeachersCard() } }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Free PDF Sets", "📄") { AdminFreePdfSetsCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Free PDF Sets", "📄") { AdminFreePdfSetsCard() } }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Premium PDF Library", "📚") { AdminPremiumPdfSetsCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Premium PDF Library", "📚") { AdminPremiumPdfSetsCard() } }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Writers & Works", "✍️") { AdminWritersCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Writers & Works", "✍️") { AdminWritersCard() } }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Syllabus", "📘") { AdminSyllabusCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Syllabus", "📘") { AdminSyllabusCard() } }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Topic Sections", "📖") { AdminTopicSectionsCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Topic Sections", "📖") { AdminTopicSectionsCard() } }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Daily Practice", "🔥") { AdminDailyPracticeCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Daily Practice", "🔥") { AdminDailyPracticeCard() } }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Self Assessment", "🎯") { AdminSelfAssessmentCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Self Assessment", "🎯") { AdminSelfAssessmentCard() } }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Videos & Recordings", "🎬") { AdminVideosRecordingsCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Videos & Recordings", "🎬") { AdminVideosRecordingsCard() } }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Add Registration", "➕") { AdminAddRegistrationCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Add Registration", "➕") { AdminAddRegistrationCard() } }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Scores Manager", "🏆") { AdminScoresManagerCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Scores Manager", "🏆") { AdminScoresManagerCard() } }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Special Note Books", "📕") { AdminMiniBookUploadCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Special Note Books", "📕") { AdminMiniBookUploadCard() } }
         Spacer(Modifier.height(10.dp))
-        AdminAccordionSection("Data Viewer", "📊") { AdminDataViewersCard() }
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Data Viewer", "📊") { AdminDataViewersCard() } }
         Spacer(Modifier.height(30.dp))
     }
 }
