@@ -207,8 +207,14 @@ fun LiveClassJoinCard() {
 
     LaunchedEffect(slidePdf, currentPage, joined) {
         if (joined && slidePdf.isNotBlank()) {
-            slideBitmap = withContext(Dispatchers.Default) {
-                PdfSlideRenderer.renderPage(context, slidePdf, currentPage)
+            try {
+                slideBitmap = withContext(Dispatchers.Default) {
+                    PdfSlideRenderer.renderPage(context, slidePdf, currentPage)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SDBoard", "PDF render failed", e)
+                slideBitmap = null
+                joinMsg = "Could not load the shared slide."
             }
         } else {
             slideBitmap = null
