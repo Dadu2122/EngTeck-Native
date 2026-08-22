@@ -3,6 +3,9 @@ package com.shreeyog.engteck.screens
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,9 +28,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import com.google.firebase.database.FirebaseDatabase
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 
 private val PREMIUM_CATS = listOf(
     "tgt" to "TGT", "pgt" to "PGT", "lt" to "LT", "gic" to "GIC Lecturer",
@@ -325,16 +325,23 @@ private fun VideoShelf(items: List<LibraryItem>, expandedIndex: Int?, onToggleEx
                 key(ytId) {
                     AndroidView(
                         factory = { ctx ->
-                            YouTubePlayerView(ctx).apply {
-                                addYouTubePlayerListener(object : AbstractYouTubePlayerListener() {
-                                    override fun onReady(youTubePlayer: YouTubePlayer) {
-                                        youTubePlayer.loadVideo(ytId, 0f)
-                                    }
-                                })
+                            WebView(ctx).apply {
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.mediaPlaybackRequiresUserGesture = false
+                                settings.loadWithOverviewMode = true
+                                settings.useWideViewPort = true
+                                settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"
+                                webViewClient = WebViewClient()
+                                webChromeClient = WebChromeClient()
+                                // Load the real youtube.com watch page — exactly like opening
+                                // it in a mobile browser (which is what already works on the
+                                // website). This isn't subject to the "allow embedding" iframe
+                                // restriction at all, since it's not an embed — it's youtube.com itself.
+                                loadUrl("https://www.youtube.com/watch?v=$ytId")
                             }
                         },
-                        onRelease = { it.release() },
-                        modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                        modifier = Modifier.fillMaxWidth().height(500.dp)
                     )
                 }
             } else {
