@@ -149,7 +149,7 @@ private fun PremiumLibraryShell(
     // Unlocked category's items are shown as an inline scrolling shelf — no popup.
     var unlockedCatLabel by remember { mutableStateOf("") }
     var unlockedItems by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
-    var expandedIndex by remember { mutableStateOf<Int?>(null) }
+    var playingIndex by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(firebasePath) {
         FirebaseDatabase.getInstance().getReference(firebasePath)
@@ -178,7 +178,7 @@ private fun PremiumLibraryShell(
         }
         checkingCatKey = catKey
         unlockMsg = ""
-        expandedIndex = null
+        playingIndex = null
         FirebaseDatabase.getInstance().getReference("paidVideoCategories").child(currentMobile).child(catKey)
             .get()
             .addOnSuccessListener { snap ->
@@ -259,8 +259,8 @@ private fun PremiumLibraryShell(
                 Spacer(Modifier.height(4.dp))
                 VideoShelf(
                     items = unlockedItems,
-                    expandedIndex = expandedIndex,
-                    onToggleExpand = { idx -> expandedIndex = if (expandedIndex == idx) null else idx }
+                    playingIndex = playingIndex,
+                    onSelect = { idx -> playingIndex = if (playingIndex == idx) null else idx }
                 )
                 Spacer(Modifier.height(14.dp))
             }
@@ -310,24 +310,38 @@ private fun PremiumLibraryShell(
 }
 
 @Composable
-private fun VideoShelf(items: List<LibraryItem>, expandedIndex: Int?, onToggleExpand: (Int) -> Unit) {
-    val context = LocalContext.current
-
+private fun VideoShelf(items: List<LibraryItem>, playingIndex: Int?, onSelect: (Int) -> Unit) {
     if (items.isEmpty()) {
         Text("Abhi koi item nahi hai is category me.", fontSize = 12.sp, color = Color(0xFF5B5F6B))
         return
     }
 
-    // Expanded player sits above the shelf, full width, so it reads as "this card grew open".
-    val expandedItem = expandedIndex?.let { items.getOrNull(it) }
-    if (expandedItem != null) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color.Black)
-        ) {
-            val ytId = extractYouTubeId(expandedItem.url)
+    // One horizontal row — students scroll sideways to browse, and whichever
+    // card is tapped plays right there in the same card (no separate area).
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        itemsIndexed(items) { index, item ->
+            VideoShelfCard(
+                item = item,
+                isPlaying = playingIndex == index,
+                onClick = { onSelect(index) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun VideoShelfCard(item: LibraryItem, isPlaying: Boolean, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val ytId = extractYouTubeId(item.url)
+
+    Box(
+        modifier = Modifier
+            .width(300.dp)
+            .aspectRatio(16f / 9f)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.Black)
+    ) {
+        if (isPlaying) {
             if (ytId != null) {
                 key(ytId) {
                     AndroidView(
@@ -341,124 +355,80 @@ private fun VideoShelf(items: List<LibraryItem>, expandedIndex: Int?, onToggleEx
                                 loadUrl("$VIDEO_EMBED_HOST?id=$ytId")
                             }
                         },
-                        modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
             } else {
                 Box(
-                    modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clickable {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(expandedItem.url)))
+                    modifier = Modifier.fillMaxSize().clickable {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
                     },
                     contentAlignment = Alignment.Center
                 ) {
                     Text("▶ Is link ko browser me kholein", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(expandedItem.title, color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                TextButton(onClick = { onToggleExpand(items.indexOf(expandedItem)) }) {
-                    Text("✕ Close", color = Color(0xFFD4A017), fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                }
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-    }
-
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        itemsIndexed(items) { index, item ->
-            VideoShelfCard(
-                item = item,
-                isSelected = expandedIndex == index,
-                onClick = { onToggleExpand(index) }
-            )
-        }
-    }
-}
-
-@Composable
-private fun VideoShelfCard(item: LibraryItem, isSelected: Boolean, onClick: () -> Unit) {
-    val ytId = extractYouTubeId(item.url)
-    Box(
-        modifier = Modifier
-            .width(150.dp)
-            .aspectRatio(3f / 4f)
-            .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 10.dp))
-            .background(if (ytId == null) videoGradient(item.title) else Brush.linearGradient(listOf(Color.Black, Color.Black)))
-            .then(
-                if (isSelected) Modifier.border(2.5.dp, Color(0xFFD4A017), RoundedCornerShape(topStart = 10.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 10.dp))
-                else Modifier
-            )
-            .clickable(onClick = onClick)
-    ) {
-        if (ytId != null) {
-            AsyncImage(
-                model = "https://img.youtube.com/vi/$ytId/hqdefault.jpg",
-                contentDescription = item.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            // Dark scrim so the title stays readable over any thumbnail.
+            // Small close button, top-right, over the playing video.
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.15f), Color.Black.copy(alpha = 0.85f)), startY = 100f))
-            )
-            // Red YouTube play button, centered — same visual language as YouTube thumbnails everywhere.
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFFFF0000)),
-                contentAlignment = Alignment.Center
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
-                Text("▶", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("✕ Close", color = Color(0xFFD4A017), fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         } else {
-            Box(
+            if (ytId != null) {
+                AsyncImage(
+                    model = "https://img.youtube.com/vi/$ytId/hqdefault.jpg",
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().clickable(onClick = onClick)
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.8f)), startY = 60f))
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFFF0000))
+                        .clickable(onClick = onClick),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("▶", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(videoGradient(item.title))
+                        .clickable(onClick = onClick)
+                )
+            }
+            Column(
                 modifier = Modifier
-                    .width(10.dp)
-                    .fillMaxHeight()
-                    .align(Alignment.CenterStart)
-                    .background(Color.Black.copy(alpha = 0.22f))
-            )
-        }
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(start = if (ytId == null) 20.dp else 12.dp, top = 14.dp, end = 12.dp, bottom = 14.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            if (ytId == null) Text("🎬", fontSize = 20.sp) else Spacer(Modifier.height(1.dp))
-            Column {
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(12.dp)
+            ) {
                 Text(
                     item.title,
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    lineHeight = 16.sp
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .background(Color(0xFFFF0000), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 2.dp)
-                    ) {
-                        Text("▶", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.width(5.dp))
-                    Text("Video", color = Color.White.copy(alpha = 0.9f), fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
-                }
                 if (item.date.isNotEmpty()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text("📅 ${item.date}", color = Color.White.copy(alpha = 0.7f), fontSize = 9.5.sp)
+                    Spacer(Modifier.height(3.dp))
+                    Text("📅 ${item.date}", color = Color.White.copy(alpha = 0.75f), fontSize = 10.sp)
                 }
             }
         }
