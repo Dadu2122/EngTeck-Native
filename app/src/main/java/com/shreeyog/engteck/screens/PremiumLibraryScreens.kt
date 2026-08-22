@@ -10,8 +10,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -316,11 +314,11 @@ private fun VideoShelf(items: List<LibraryItem>, playingIndex: Int?, onSelect: (
         return
     }
 
-    // One horizontal row — students scroll sideways to browse, and whichever
-    // card is tapped plays right there in the same card (no separate area).
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        itemsIndexed(items) { index, item ->
-            VideoShelfCard(
+    // Vertical list — one video per row, thumbnail on the left, title/date on
+    // the right. Tapping a row expands it into a full-width player right there.
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        items.forEachIndexed { index, item ->
+            VideoListRow(
                 item = item,
                 isPlaying = playingIndex == index,
                 onClick = { onSelect(index) }
@@ -330,18 +328,44 @@ private fun VideoShelf(items: List<LibraryItem>, playingIndex: Int?, onSelect: (
 }
 
 @Composable
-private fun VideoShelfCard(item: LibraryItem, isPlaying: Boolean, onClick: () -> Unit) {
+private fun VideoListRow(item: LibraryItem, isPlaying: Boolean, onClick: () -> Unit) {
     val context = LocalContext.current
     val ytId = extractYouTubeId(item.url)
 
-    Box(
+    Column(
         modifier = Modifier
-            .width(300.dp)
-            .aspectRatio(16f / 9f)
+            .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.Black)
+            .background(if (isPlaying) Color(0xFF12203D) else Color(0xFFF5F3EC))
     ) {
         if (isPlaying) {
+            // A clean, separate header bar — the Close button lives here,
+            // never on top of the video itself.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    item.title,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFC0392B))
+                        .clickable(onClick = onClick)
+                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                ) {
+                    Text("✕ Close", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
             if (ytId != null) {
                 key(ytId) {
                     AndroidView(
@@ -355,12 +379,12 @@ private fun VideoShelfCard(item: LibraryItem, isPlaying: Boolean, onClick: () ->
                                 loadUrl("$VIDEO_EMBED_HOST?id=$ytId")
                             }
                         },
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                     )
                 }
             } else {
                 Box(
-                    modifier = Modifier.fillMaxSize().clickable {
+                    modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clickable {
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
                     },
                     contentAlignment = Alignment.Center
@@ -368,67 +392,54 @@ private fun VideoShelfCard(item: LibraryItem, isPlaying: Boolean, onClick: () ->
                     Text("▶ Is link ko browser me kholein", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
-            // Small close button, top-right, over the playing video.
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color.Black.copy(alpha = 0.6f))
-                    .clickable(onClick = onClick)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            ) {
-                Text("✕ Close", color = Color(0xFFD4A017), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
         } else {
-            if (ytId != null) {
-                AsyncImage(
-                    model = "https://img.youtube.com/vi/$ytId/hqdefault.jpg",
-                    contentDescription = item.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().clickable(onClick = onClick)
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.8f)), startY = 60f))
-                )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFFF0000))
-                        .clickable(onClick = onClick),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("▶", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(videoGradient(item.title))
-                        .clickable(onClick = onClick)
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .padding(12.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    item.title,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (item.date.isNotEmpty()) {
-                    Spacer(Modifier.height(3.dp))
-                    Text("📅 ${item.date}", color = Color.White.copy(alpha = 0.75f), fontSize = 10.sp)
+                Box(
+                    modifier = Modifier
+                        .width(130.dp)
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Black)
+                ) {
+                    if (ytId != null) {
+                        AsyncImage(
+                            model = "https://img.youtube.com/vi/$ytId/hqdefault.jpg",
+                            contentDescription = item.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Box(Modifier.fillMaxSize().background(videoGradient(item.title)))
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFFF0000)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("▶", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        item.title,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp,
+                        color = Color(0xFF1A1A1A),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 17.sp
+                    )
+                    if (item.date.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("📅 ${item.date}", fontSize = 11.sp, color = Color(0xFF5B5F6B))
+                    }
                 }
             }
         }
