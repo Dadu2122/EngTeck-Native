@@ -31,10 +31,47 @@ import androidx.compose.ui.unit.sp
 fun AdminAccordionSection(title: String, icon: String = "", fullBleedContent: Boolean = false, content: @Composable () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
 
+    if (fullBleedContent) {
+        // Header keeps the bordered white "card" look on its own; the content
+        // below is rendered outside that border entirely, so it's free to
+        // bleed to the real screen edges without a stray border line cutting
+        // through it.
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White, RoundedCornerShape(16.dp))
+                    .border(1.dp, Color(0xFFE3DFD3), RoundedCornerShape(16.dp))
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (icon.isNotEmpty()) "$icon $title" else title,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF12203D)
+                )
+                Text(
+                    if (expanded) "▲ Close" else "▼ Open",
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1B6B79)
+                )
+            }
+            if (expanded) {
+                content()
+            }
+        }
+        return
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (fullBleedContent) Modifier else Modifier.clip(RoundedCornerShape(16.dp)))
+            .clip(RoundedCornerShape(16.dp))
             .background(Color.White, RoundedCornerShape(16.dp))
             .border(1.dp, Color(0xFFE3DFD3), RoundedCornerShape(16.dp))
     ) {
