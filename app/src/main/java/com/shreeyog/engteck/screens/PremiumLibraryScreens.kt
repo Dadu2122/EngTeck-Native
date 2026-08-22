@@ -1,11 +1,15 @@
 package com.shreeyog.engteck.screens
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,6 +37,37 @@ import com.google.firebase.database.FirebaseDatabase
 // website — YouTube trusts this origin exactly like it trusts the website,
 // which is why this actually plays in-app instead of getting rejected.
 private const val VIDEO_EMBED_HOST = "https://dadu2122.github.io/Shree-English-Classes/video-embed.html"
+
+// Enables real fullscreen + landscape for the embedded YouTube player — without
+// this, tapping YouTube's own fullscreen button inside the WebView does nothing,
+// which is also why the seek bar / quality gear felt cramped and unusable.
+private class FullscreenChromeClient(private val activity: Activity) : WebChromeClient() {
+    private var customView: View? = null
+    private var customViewCallback: CustomViewCallback? = null
+    private var originalOrientation = activity.requestedOrientation
+
+    override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+        if (customView != null) { callback.onCustomViewHidden(); return }
+        customView = view
+        customViewCallback = callback
+        originalOrientation = activity.requestedOrientation
+        val decor = activity.window.decorView as FrameLayout
+        decor.addView(
+            view,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        )
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    }
+
+    override fun onHideCustomView() {
+        val decor = activity.window.decorView as FrameLayout
+        customView?.let { decor.removeView(it) }
+        customView = null
+        activity.requestedOrientation = originalOrientation
+        customViewCallback?.onCustomViewHidden()
+        customViewCallback = null
+    }
+}
 
 private val PREMIUM_CATS = listOf(
     "tgt" to "TGT", "pgt" to "PGT", "lt" to "LT", "gic" to "GIC Lecturer",
@@ -339,13 +374,23 @@ private fun VideoListRow(item: LibraryItem, isPlaying: Boolean, onClick: () -> U
             .background(if (isPlaying) Color(0xFF12203D) else Color(0xFFF5F3EC))
     ) {
         if (isPlaying) {
-            // A clean, separate header bar — the Close button lives here,
+            // A clean, separate header bar — a small back arrow lives here,
             // never on top of the video itself.
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = 0.08f))
+                        .clickable(onClick = onClick),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("←", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(10.dp))
                 Text(
                     item.title,
                     color = Color.White,
@@ -355,16 +400,6 @@ private fun VideoListRow(item: LibraryItem, isPlaying: Boolean, onClick: () -> U
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFFC0392B))
-                        .clickable(onClick = onClick)
-                        .padding(horizontal = 12.dp, vertical = 7.dp)
-                ) {
-                    Text("✕ Close", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
             }
             if (ytId != null) {
                 key(ytId) {
@@ -375,7 +410,7 @@ private fun VideoListRow(item: LibraryItem, isPlaying: Boolean, onClick: () -> U
                                 settings.domStorageEnabled = true
                                 settings.mediaPlaybackRequiresUserGesture = false
                                 webViewClient = WebViewClient()
-                                webChromeClient = WebChromeClient()
+                                webChromeClient = (context as? Activity)?.let { FullscreenChromeClient(it) } ?: WebChromeClient()
                                 loadUrl("$VIDEO_EMBED_HOST?id=$ytId")
                             }
                         },
