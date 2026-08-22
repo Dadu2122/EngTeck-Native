@@ -3,6 +3,8 @@ package com.shreeyog.engteck.screens
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,8 +21,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import com.google.firebase.database.FirebaseDatabase
+
+private fun extractYouTubeId(url: String): String? {
+    val patterns = listOf(
+        Regex("youtu\\.be/([a-zA-Z0-9_-]{6,})"),
+        Regex("youtube\\.com/watch\\?v=([a-zA-Z0-9_-]{6,})"),
+        Regex("youtube\\.com/embed/([a-zA-Z0-9_-]{6,})"),
+        Regex("youtube\\.com/shorts/([a-zA-Z0-9_-]{6,})")
+    )
+    for (p in patterns) {
+        val m = p.find(url)
+        if (m != null) return m.groupValues[1]
+    }
+    return null
+}
 
 private val PREMIUM_CATS = listOf(
     "tgt" to "TGT", "pgt" to "PGT", "lt" to "LT", "gic" to "GIC Lecturer",
@@ -104,6 +121,7 @@ private fun PremiumLibraryShell(
     var checkingCatKey by remember { mutableStateOf("") }
     var viewingCatLabel by remember { mutableStateOf("") }
     var viewingItems by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
+    var playingVideoId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(firebasePath) {
         FirebaseDatabase.getInstance().getReference(firebasePath)
@@ -267,8 +285,13 @@ private fun PremiumLibraryShell(
                                     .fillMaxWidth()
                                     .background(Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
                                     .clickable(enabled = item.url.isNotBlank()) {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.url))
-                                        context.startActivity(intent)
+                                        val ytId = extractYouTubeId(item.url)
+                                        if (ytId != null) {
+                                            playingVideoId = ytId
+                                        } else {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.url))
+                                            context.startActivity(intent)
+                                        }
                                     }
                                     .padding(horizontal = 12.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -283,6 +306,38 @@ private fun PremiumLibraryShell(
                 }
                 Spacer(Modifier.height(10.dp))
                 TextButton(onClick = { viewingCatLabel = "" }, modifier = Modifier.fillMaxWidth()) { Text("Close") }
+            }
+        }
+    }
+
+    playingVideoId?.let { videoId ->
+        YouTubePlayerDialog(videoId = videoId, onDismiss = { playingVideoId = null })
+    }
+}
+
+@Composable
+private fun YouTubePlayerDialog(videoId: String, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.Black, RoundedCornerShape(14.dp))
+        ) {
+            AndroidView(
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        settings.javaScriptEnabled = true
+                        settings.mediaPlaybackRequiresUserGesture = false
+                        webViewClient = WebViewClient()
+                        loadUrl("https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1")
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+            )
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                Text("Close", color = Color.White, fontWeight = FontWeight.Bold)
             }
         }
     }
