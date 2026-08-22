@@ -536,19 +536,9 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
             }
 
             Spacer(Modifier.height(14.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("COLOUR:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF8A8F99), fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
-                TOOL_COLORS.forEach { c ->
-                    Box(
-                        modifier = Modifier.size(30.dp).background(c, CircleShape)
-                            .border(if (penColor == c) 3.dp else 0.dp, LIVE_GOLD, CircleShape)
-                            .clickable { penColor = c }
-                    )
-                }
-            }
-            Spacer(Modifier.height(10.dp))
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 listOf("Thin" to 3f, "Medium" to 6f, "Thick" to 12f).forEach { (label, w) ->
@@ -556,6 +546,15 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
                         modifier = Modifier.background(if (penWidth == w) LIVE_GOLD else LIVE_NAVY, RoundedCornerShape(100.dp))
                             .clickable { penWidth = w }.padding(horizontal = 16.dp, vertical = 8.dp)
                     ) { Text(label, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = if (penWidth == w) Color(0xFF12203D) else Color(0xFF8A8F99)) }
+                }
+                Spacer(Modifier.width(6.dp))
+                Text("COLOUR:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF8A8F99), fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                TOOL_COLORS.forEach { c ->
+                    Box(
+                        modifier = Modifier.size(30.dp).background(c, CircleShape)
+                            .border(if (penColor == c) 3.dp else 0.dp, LIVE_GOLD, CircleShape)
+                            .clickable { penColor = c }
+                    )
                 }
             }
 
