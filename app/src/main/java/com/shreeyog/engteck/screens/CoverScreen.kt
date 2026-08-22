@@ -91,21 +91,15 @@ fun CoverScreen(onProgressClick: () -> Unit = {}) {
                     .padding(horizontal = 13.dp, vertical = 7.dp)
             ) {
                 Text("★ ", color = Gold, fontSize = 12.sp)
-                Text(content.trustBadge, color = GoldSoft, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                EditableText("trustBadge", content.trustBadge, { content = content.copy(trustBadge = it) }) { v ->
+                    Text(v, color = GoldSoft, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
             }
 
             Spacer(Modifier.height(22.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                 CircleIcon("☀️", Color.White.copy(alpha = 0.08f))
-                Box(
-                    modifier = Modifier
-                        .size(54.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Brush.linearGradient(listOf(Gold, Color(0xFFB8860F)))),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("🎓", fontSize = 22.sp)
-                }
+                QuickEditToggleCap()
                 CircleIcon("🌙", Color.White.copy(alpha = 0.08f))
             }
 
@@ -117,23 +111,27 @@ fun CoverScreen(onProgressClick: () -> Unit = {}) {
                     .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
                     .padding(vertical = 16.dp, horizontal = 14.dp)
             ) {
-                Text(
-                    content.coachingLine1,
-                    color = Gold,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                EditableText("coachingLine1", content.coachingLine1, { content = content.copy(coachingLine1 = it) }) { v ->
+                    Text(
+                        v,
+                        color = Gold,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
             Spacer(Modifier.height(14.dp))
-            Text(
-                content.tagline,
-                color = Color.White.copy(alpha = 0.75f),
-                fontSize = 14.sp,
-                lineHeight = 21.sp,
-                textAlign = TextAlign.Center
-            )
+            EditableText("tagline", content.tagline, { content = content.copy(tagline = it) }) { v ->
+                Text(
+                    v,
+                    color = Color.White.copy(alpha = 0.75f),
+                    fontSize = 14.sp,
+                    lineHeight = 21.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
 
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -155,9 +153,9 @@ fun CoverScreen(onProgressClick: () -> Unit = {}) {
 
             Spacer(Modifier.height(22.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                StatBox(content.statStudents, "STUDENTS", Modifier.weight(1f))
-                StatBox(content.statSuccess, "SUCCESS RATE", Modifier.weight(1f))
-                StatBox(content.statYears, "YEARS", Modifier.weight(1f))
+                StatBox("statStudents", content.statStudents, "STUDENTS", { content = content.copy(statStudents = it) }, Modifier.weight(1f))
+                StatBox("statSuccess", content.statSuccess, "SUCCESS RATE", { content = content.copy(statSuccess = it) }, Modifier.weight(1f))
+                StatBox("statYears", content.statYears, "YEARS", { content = content.copy(statYears = it) }, Modifier.weight(1f))
             }
 
             Spacer(Modifier.height(14.dp))
@@ -202,7 +200,7 @@ private fun CircleIcon(emoji: String, bg: Color) {
 }
 
 @Composable
-private fun StatBox(value: String, label: String, modifier: Modifier = Modifier) {
+private fun StatBox(fieldKey: String, value: String, label: String, onSaved: (String) -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .background(Color.White.copy(alpha = 0.07f), RoundedCornerShape(14.dp))
@@ -211,7 +209,9 @@ private fun StatBox(value: String, label: String, modifier: Modifier = Modifier)
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, color = Gold, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+            EditableText(fieldKey, value, onSaved) { v ->
+                Text(v, color = Gold, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+            }
             Spacer(Modifier.height(2.dp))
             Text(label, color = Color.White.copy(alpha = 0.65f), fontSize = 9.sp)
         }
