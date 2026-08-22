@@ -3,9 +3,6 @@ package com.shreeyog.engteck.screens
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,6 +25,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import com.google.firebase.database.FirebaseDatabase
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 
 private val PREMIUM_CATS = listOf(
     "tgt" to "TGT", "pgt" to "PGT", "lt" to "LT", "gic" to "GIC Lecturer",
@@ -322,22 +322,21 @@ private fun VideoShelf(items: List<LibraryItem>, expandedIndex: Int?, onToggleEx
         ) {
             val ytId = extractYouTubeId(expandedItem.url)
             if (ytId != null) {
-                AndroidView(
-                    factory = { ctx ->
-                        WebView(ctx).apply {
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.mediaPlaybackRequiresUserGesture = false
-                            settings.loadWithOverviewMode = true
-                            settings.useWideViewPort = true
-                            settings.userAgentString = settings.userAgentString.replace("; wv", "")
-                            webViewClient = WebViewClient()
-                            webChromeClient = WebChromeClient()
-                            loadUrl("https://www.youtube.com/embed/$ytId?autoplay=1&playsinline=1&rel=0")
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
-                )
+                key(ytId) {
+                    AndroidView(
+                        factory = { ctx ->
+                            YouTubePlayerView(ctx).apply {
+                                addYouTubePlayerListener(object : AbstractYouTubePlayerListener() {
+                                    override fun onReady(youTubePlayer: YouTubePlayer) {
+                                        youTubePlayer.loadVideo(ytId, 0f)
+                                    }
+                                })
+                            }
+                        },
+                        onRelease = { it.release() },
+                        modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                    )
+                }
             } else {
                 Box(
                     modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clickable {
