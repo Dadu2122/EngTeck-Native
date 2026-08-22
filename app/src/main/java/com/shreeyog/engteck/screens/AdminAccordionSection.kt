@@ -22,14 +22,19 @@ import androidx.compose.ui.unit.sp
 // A tap-to-open / tap-to-close section for the Admin Panel. Collapsed by default so the panel
 // doesn't turn into one giant endless scroll — only one card's content needs to be rendered
 // (and hit Firebase) at a time when the admin actually wants to work on it.
+//
+// fullBleedContent: when true, the outer rounded-corner clip is skipped so this section's
+// content (e.g. the live board) can extend edge-to-edge past the Admin Panel's side padding
+// instead of being cropped by this card's own rounded corners. The header/card chrome loses
+// its rounding in that case — an acceptable tradeoff since the bleeding content is the point.
 @Composable
-fun AdminAccordionSection(title: String, icon: String = "", content: @Composable () -> Unit) {
+fun AdminAccordionSection(title: String, icon: String = "", fullBleedContent: Boolean = false, content: @Composable () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .then(if (fullBleedContent) Modifier else Modifier.clip(RoundedCornerShape(16.dp)))
             .background(Color.White, RoundedCornerShape(16.dp))
             .border(1.dp, Color(0xFFE3DFD3), RoundedCornerShape(16.dp))
     ) {
