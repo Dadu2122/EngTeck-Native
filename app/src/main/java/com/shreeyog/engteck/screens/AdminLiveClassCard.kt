@@ -124,7 +124,8 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
     var slideBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var uploading by remember { mutableStateOf(false) }
     var repeatCount by remember { mutableStateOf(0) }
-    var participantCount by remember { mutableStateOf(0) }
+    var connectedStudents by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) } // name, mobile
+    var showConnectedList by remember { mutableStateOf(false) }
     var pendingRequests by remember { mutableStateOf<List<Triple<String, String, String>>>(emptyList()) } // key, name, mobile
 
     var tool by remember { mutableStateOf(AnnotationTool.POINTER) }
@@ -194,6 +195,17 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
                 }
                 override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
+        FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/participants")
+            .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(s: com.google.firebase.database.DataSnapshot) {
+                    connectedStudents = s.children.map { c ->
+                        val name = c.child("name").getValue(String::class.java) ?: "Student"
+                        val mobile = c.child("mobile").getValue(String::class.java) ?: ""
+                        name to mobile
+                    }
+                }
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
+            })
     }
 
     LaunchedEffect(slidePdf, currentPage) {
@@ -224,16 +236,15 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
             starting = false; connected = true; msg = ""
             FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/active").setValue(true)
         }
-        AgoraLiveAudio.onUserJoined = { participantCount++ }
-        AgoraLiveAudio.onUserLeft = { if (participantCount > 0) participantCount-- }
         AgoraLiveAudio.onError = { err -> starting = false; msg = "Could not start: $err" }
         AgoraLiveAudio.join(context, "live_$teacherKey", 1)
     }
 
     fun stopClass() {
         AgoraLiveAudio.leave()
-        connected = false; msg = ""; participantCount = 0
+        connected = false; msg = ""
         FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/active").setValue(false)
+        FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/participants").removeValue()
         FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/repeatRequests").removeValue()
         FirebaseDatabase.getInstance().getReference("liveClasses/$teacherKey/joinRequests").removeValue()
     }
@@ -286,9 +297,10 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
             Box(
                 modifier = Modifier.background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(100.dp))
                     .border(1.dp, LIVE_GOLD.copy(alpha = 0.5f), RoundedCornerShape(100.dp))
-                    .padding(horizontal = 14.dp, vertical = 5.dp)
+                    .clickable { showConnectedList = true }
+                    .padding(horizontal = 9.dp, vertical = 3.dp)
             ) {
-                Text("Connected: $participantCount", color = LIVE_GOLD, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                Text("👥 ${connectedStudents.size}", color = LIVE_GOLD, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 BlinkingDot(LIVE_GREEN)
@@ -591,6 +603,43 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
             }
 
             if (msg.isNotEmpty()) { Spacer(Modifier.height(10.dp)); Text(msg, fontSize = 12.sp, color = LIVE_GOLD, textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+        }
+    }
+
+    if (showConnectedList) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showConnectedList = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White, RoundedCornerShape(18.dp))
+                    .padding(18.dp)
+            ) {
+                Text("👥 Connected Students (${connectedStudents.size})", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
+                Spacer(Modifier.height(14.dp))
+                if (connectedStudents.isEmpty()) {
+                    Text("Abhi koi student connected nahi hai.", fontSize = 12.5.sp, color = Color(0xFF5B5F6B))
+                } else {
+                    Column(modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        connectedStudents.forEachIndexed { index, (name, mobile) ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFF5F3EC), RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("${index + 1}.", fontSize = 12.sp, color = Color(0xFF8A8F99), modifier = Modifier.width(24.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(name, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
+                                    if (mobile.isNotEmpty()) Text(mobile, fontSize = 10.5.sp, color = Color(0xFF5B5F6B))
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                TextButton(onClick = { showConnectedList = false }, modifier = Modifier.fillMaxWidth()) { Text("Close") }
+            }
         }
     }
 }
