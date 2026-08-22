@@ -290,7 +290,7 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
     }
 
     // ---------- Connected: full dark "Smart Digital Board" layout ----------
-    Column(modifier = Modifier.fillMaxWidth().fullBleed(SCREEN_SIDE_PADDING)) {
+    Column(modifier = Modifier.fillMaxWidth()) {
 
         // Dark status strip: S.D.BOARD | Connected: N | ON_AIR — monospace labels.
         Row(
