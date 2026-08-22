@@ -15,6 +15,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -352,14 +353,11 @@ fun LiveClassJoinCard() {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(420.dp)
+                        .height(560.dp)
                         .background(Color.White)
                         .border(0.75.dp, Color.Black)
+                        .clip(androidx.compose.ui.graphics.RectangleShape)
                         .onSizeChanged { boardSizePx = it }
-                        .graphicsLayer(
-                            scaleX = zoomScale, scaleY = zoomScale,
-                            translationX = zoomOffsetX, translationY = zoomOffsetY
-                        )
                         .pointerInput(Unit) {
                             detectTransformGestures { _, pan, gestureZoom, _ ->
                                 zoomScale = (zoomScale * gestureZoom).coerceIn(1f, 4f)
@@ -370,20 +368,32 @@ fun LiveClassJoinCard() {
                             }
                         }
                 ) {
-                    if (slideBitmap != null) {
-                        Image(
-                            bitmap = slideBitmap!!.asImageBitmap(),
-                            contentDescription = "Slide",
-                            contentScale = ContentScale.FillBounds,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else if (slidePdf.isNotBlank()) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = SLIVE_NAVY)
-                        }
-                    } else {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("🔊 You're connected", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F7A3D))
+                    // Zoom/pan applied only to this inner layer — the outer Box's
+                    // border above stays fixed size, so it never thickens into a
+                    // visible line across the slide when zoomScale > 1.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(
+                                scaleX = zoomScale, scaleY = zoomScale,
+                                translationX = zoomOffsetX, translationY = zoomOffsetY
+                            )
+                    ) {
+                        if (slideBitmap != null) {
+                            Image(
+                                bitmap = slideBitmap!!.asImageBitmap(),
+                                contentDescription = "Slide",
+                                contentScale = ContentScale.FillBounds,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else if (slidePdf.isNotBlank()) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = SLIVE_NAVY)
+                            }
+                        } else {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("🔊 You're connected", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F7A3D))
+                            }
                         }
                     }
                 }
