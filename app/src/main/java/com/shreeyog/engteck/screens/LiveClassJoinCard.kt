@@ -111,6 +111,8 @@ fun LiveClassJoinCard() {
     var slidePdf by remember { mutableStateOf("") }
     var currentPage by remember { mutableStateOf(0) }
     var slideBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var boardModeStr by remember { mutableStateOf("PDF") }
+    var pastedText by remember { mutableStateOf("") }
     var repeatSent by remember { mutableStateOf(false) }
     var participantCount by remember { mutableStateOf(1) } // at least this student
 
@@ -290,6 +292,20 @@ fun LiveClassJoinCard() {
                 override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
                     currentPage = snapshot.getValue(Int::class.java) ?: 0
                     repeatSent = false
+                }
+                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+            })
+        FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/boardMode")
+            .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                    boardModeStr = snapshot.getValue(String::class.java) ?: "PDF"
+                }
+                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+            })
+        FirebaseDatabase.getInstance().getReference("liveClasses/$selectedTeacherKey/pastedText")
+            .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                    pastedText = snapshot.getValue(String::class.java) ?: ""
                 }
                 override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
             })
@@ -527,15 +543,19 @@ fun LiveClassJoinCard() {
                         .border(0.75.dp, Color.Black)
                         .clip(androidx.compose.ui.graphics.RectangleShape)
                         .onSizeChanged { boardSizePx = it }
-                        .pointerInput(Unit) {
-                            detectTransformGestures { _, pan, gestureZoom, _ ->
-                                zoomScale = (zoomScale * gestureZoom).coerceIn(1f, 4f)
-                                val maxOffsetX = (boardSizePx.width * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
-                                val maxOffsetY = (boardSizePx.height * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
-                                zoomOffsetX = (zoomOffsetX + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
-                                zoomOffsetY = (zoomOffsetY + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
-                            }
-                        }
+                        .then(
+                            if (boardModeStr != "PASTE_TEXT") {
+                                Modifier.pointerInput(Unit) {
+                                    detectTransformGestures { _, pan, gestureZoom, _ ->
+                                        zoomScale = (zoomScale * gestureZoom).coerceIn(1f, 4f)
+                                        val maxOffsetX = (boardSizePx.width * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
+                                        val maxOffsetY = (boardSizePx.height * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
+                                        zoomOffsetX = (zoomOffsetX + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
+                                        zoomOffsetY = (zoomOffsetY + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
+                                    }
+                                }
+                            } else Modifier
+                        )
                 ) {
                     // Zoom/pan applied only to this inner layer — the outer Box's
                     // border above stays fixed size, so it never thickens into a
@@ -548,7 +568,15 @@ fun LiveClassJoinCard() {
                                 translationX = zoomOffsetX, translationY = zoomOffsetY
                             )
                     ) {
-                        if (slideBitmap != null) {
+                        if (boardModeStr == "PASTE_TEXT") {
+                            BoardPastedTextView(
+                                pastedText = pastedText,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(20.dp)
+                            )
+                        } else if (slideBitmap != null) {
                             Image(
                                 bitmap = slideBitmap!!.asImageBitmap(),
                                 contentDescription = "Slide",
