@@ -1,65 +1,72 @@
 package com.shreeyog.engteck.screens
 
-import android.Manifest
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntSize
 import com.google.firebase.database.FirebaseDatabase
 import com.shreeyog.engteck.live.AgoraLiveAudio
+import com.shreeyog.engteck.live.AnnotationCanvas
+import com.shreeyog.engteck.live.AnnotationTool
+import com.shreeyog.engteck.live.InkShape
 import com.shreeyog.engteck.live.PdfSlideRenderer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// Same palette as the teacher's board (AdminLiveClassCard.kt) so both sides look identical.
-private val SLIVE_NAVY = Color(0xFF070A12)
-private val SLIVE_BOARD_TOP = Color(0xFF12162A)
-private val SLIVE_BOARD_BOTTOM = Color(0xFF0A0D1A)
-private val SLIVE_GOLD = Color(0xFFD4A017)
-private val SLIVE_GREEN = Color(0xFF39FF9E)
+private val LIVE_NAVY = Color(0xFF070A12)
+private val LIVE_BOARD_TOP = Color(0xFF12162A)
+private val LIVE_BOARD_BOTTOM = Color(0xFF0A0D1A)
+private val LIVE_GOLD = Color(0xFFD4A017)
+private val LIVE_GREEN = Color(0xFF39FF9E)
 
-// Side padding used for non-board sections (header, join form, buttons).
-// The board itself no longer needs this — it's a direct fillMaxWidth child
-// of the root Column, which has no padding of its own, so it's naturally
-// edge-to-edge with zero offset math needed.
-private val SCREEN_SIDE_PADDING = 22.dp
+// Side padding of the parent screen this card sits in — used to make the board
+// bleed edge-to-edge via offset() (which allows negative values safely, unlike
+// padding() which crashes on negative numbers).
+private val SCREEN_SIDE_PADDING = 16.dp
 
-// Same gently-pulsing dot as the teacher's board.
+private enum class BoardMode { PDF, PASTE_TEXT, WHITEBOARD }
+
+private val TOOL_COLORS = listOf(
+    Color(0xFFC0392B), Color(0xFF12203D), Color(0xFF1F7A3D), Color(0xFF1B6B79), Color(0xFFE85D4C)
+)
+
+// A live-status dot that gently pulses (fades in/out) instead of sitting static —
+// signals "actively live" the way a recording/broadcast indicator usually does.
 @Composable
-private fun StudentBlinkingDot(color: Color, size: androidx.compose.ui.unit.Dp = 8.dp) {
-    val infiniteTransition = rememberInfiniteTransition(label = "studentLiveDotBlink")
+private fun BlinkingDot(color: Color, size: androidx.compose.ui.unit.Dp = 8.dp) {
+    val infiniteTransition = rememberInfiniteTransition(label = "liveDotBlink")
     val alpha by infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = 0.25f,
@@ -67,13 +74,16 @@ private fun StudentBlinkingDot(color: Color, size: androidx.compose.ui.unit.Dp =
             animation = tween(durationMillis = 800, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "studentLiveDotAlpha"
+        label = "liveDotAlpha"
     )
     Box(Modifier.size(size).background(color.copy(alpha = alpha), CircleShape))
 }
 
+// L-shaped glowing corner bracket for the Command Deck board frame — built from
+// two thin bars rather than a partial border (Compose borders are always
+// four-sided), positioned per corner via BoxScope.align.
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.StudentCornerBracket(alignment: Alignment) {
+private fun androidx.compose.foundation.layout.BoxScope.CornerBracket(alignment: Alignment) {
     val len = 22.dp
     val thick = 2.dp
     val isTop = alignment == Alignment.TopStart || alignment == Alignment.TopEnd
@@ -89,364 +99,424 @@ private fun androidx.compose.foundation.layout.BoxScope.StudentCornerBracket(ali
             )
             .size(len)
     ) {
-        Box(Modifier.align(if (isTop) Alignment.TopStart else Alignment.BottomStart).width(len).height(thick).background(SLIVE_GOLD.copy(alpha = 0.75f)))
-        Box(Modifier.align(if (isStart) Alignment.TopStart else Alignment.TopEnd).width(thick).height(len).background(SLIVE_GOLD.copy(alpha = 0.75f)))
+        Box(Modifier.align(if (isTop) Alignment.TopStart else Alignment.BottomStart).width(len).height(thick).background(LIVE_GOLD.copy(alpha = 0.75f)))
+        Box(Modifier.align(if (isStart) Alignment.TopStart else Alignment.TopEnd).width(thick).height(len).background(LIVE_GOLD.copy(alpha = 0.75f)))
     }
 }
 
 @Composable
-fun LiveClassJoinCard() {
+fun AdminLiveClassCard() {
     val context = LocalContext.current
     var isLive by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("") }
-    var mobile by remember { mutableStateOf("") }
-    var joinMsg by remember { mutableStateOf("") }
-    var joining by remember { mutableStateOf(false) }
-    var joined by remember { mutableStateOf(false) }
+    var starting by remember { mutableStateOf(false) }
+    var connected by remember { mutableStateOf(false) }
     var muted by remember { mutableStateOf(false) }
+    var msg by remember { mutableStateOf("") }
 
-    var studentUid by remember { mutableStateOf(0) }
+    var boardMode by remember { mutableStateOf(BoardMode.PDF) }
     var slidePdf by remember { mutableStateOf("") }
+    var pastedText by remember { mutableStateOf("") }
+    var pastedTextDraft by remember { mutableStateOf("") }
+    var pasteEditing by remember { mutableStateOf(true) } // true = input box open, false = collapsed
     var currentPage by remember { mutableStateOf(0) }
+    var pageCount by remember { mutableStateOf(0) }
     var slideBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var repeatSent by remember { mutableStateOf(false) }
-    var participantCount by remember { mutableStateOf(1) } // at least this student
+    var uploading by remember { mutableStateOf(false) }
+    var repeatCount by remember { mutableStateOf(0) }
+    var participantCount by remember { mutableStateOf(0) }
 
-    // Two-finger pinch-zoom + pan on the slide, same behaviour as the teacher's board.
+    var tool by remember { mutableStateOf(AnnotationTool.POINTER) }
+    var penColor by remember { mutableStateOf(TOOL_COLORS[0]) }
+    var penWidth by remember { mutableStateOf(6f) }
+    val strokes = remember { mutableStateListOf<InkShape>() }
+    val redoStack = remember { mutableStateListOf<InkShape>() }
+
+    // Two-finger pinch-zoom + pan. Uses Initial pass and only reacts to 2+
+    // pointers, so single-finger tool touches are never intercepted.
     var zoomScale by remember { mutableStateOf(1f) }
     var zoomOffsetX by remember { mutableStateOf(0f) }
     var zoomOffsetY by remember { mutableStateOf(0f) }
     var boardSizePx by remember { mutableStateOf(IntSize.Zero) }
-
-    fun doJoin() {
-        joining = true
-        joinMsg = "Connecting to live class..."
-        val uid = (mobile.ifBlank { "0" }).takeLast(6).toIntOrNull() ?: (1000..999999).random()
-        studentUid = uid
-        AgoraLiveAudio.onJoined = {
-            joining = false
-            joined = true
-            joinMsg = ""
-        }
-        AgoraLiveAudio.onError = { err ->
-            joining = false
-            joinMsg = "Could not connect: $err — please try again."
-        }
-        AgoraLiveAudio.join(context, "default", uid)
-    }
-
-    val micPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) doJoin()
-        else joinMsg = "Mic permission is needed to join the live class."
-    }
-
-    fun startJoinFlow() {
-        if (name.isBlank() || mobile.length != 10) {
-            joinMsg = "Please enter your name and a 10-digit mobile number"
-            return
-        }
-        if (!isLive) {
-            joinMsg = "Class is not live right now — please wait for the teacher to start"
-            return
-        }
-        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
-            context, Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-        if (hasPermission) doJoin() else micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-    }
-
-    fun sendRepeatRequest() {
-        if (studentUid == 0) return
-        repeatSent = true
-        FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests")
-            .child(studentUid.toString()).setValue(System.currentTimeMillis())
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            if (joined) {
-                AgoraLiveAudio.leave()
-                if (studentUid != 0) {
-                    FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests")
-                        .child(studentUid.toString()).removeValue()
-                }
+    val pdfPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            uploading = true
+            try {
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes != null) {
+                    val b64 = "data:application/pdf;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    FirebaseDatabase.getInstance().getReference("liveClasses/default/slidePdf").setValue(b64)
+                    FirebaseDatabase.getInstance().getReference("liveClasses/default/currentPage").setValue(0)
+                    msg = "Slides shared with the class."
+                } else msg = "Could not read that file."
+            } catch (e: Exception) {
+                msg = "Upload failed: ${e.message}"
             }
-            AgoraLiveAudio.onJoined = null
-            AgoraLiveAudio.onError = null
-            PdfSlideRenderer.close()
+            uploading = false
         }
     }
 
     LaunchedEffect(Unit) {
         FirebaseDatabase.getInstance().getReference("liveClasses/default/active")
             .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                    isLive = snapshot.getValue(Boolean::class.java) ?: false
-                }
-                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+                override fun onDataChange(s: com.google.firebase.database.DataSnapshot) { isLive = s.getValue(Boolean::class.java) ?: false }
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
         FirebaseDatabase.getInstance().getReference("liveClasses/default/slidePdf")
             .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                    slidePdf = snapshot.getValue(String::class.java) ?: ""
-                }
-                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+                override fun onDataChange(s: com.google.firebase.database.DataSnapshot) { slidePdf = s.getValue(String::class.java) ?: "" }
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
         FirebaseDatabase.getInstance().getReference("liveClasses/default/currentPage")
             .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                    currentPage = snapshot.getValue(Int::class.java) ?: 0
-                    repeatSent = false
+                override fun onDataChange(s: com.google.firebase.database.DataSnapshot) {
+                    currentPage = s.getValue(Int::class.java) ?: 0
+                    strokes.clear(); redoStack.clear()
                 }
-                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
+            })
+        FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests")
+            .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(s: com.google.firebase.database.DataSnapshot) { repeatCount = s.childrenCount.toInt() }
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
             })
     }
 
-    LaunchedEffect(slidePdf, currentPage, joined) {
-        if (joined && slidePdf.isNotBlank()) {
-            slideBitmap = withContext(Dispatchers.Default) {
-                PdfSlideRenderer.renderPage(context, slidePdf, currentPage)
+    LaunchedEffect(slidePdf, currentPage) {
+        if (slidePdf.isNotBlank()) {
+            val result = withContext(Dispatchers.Default) {
+                Pair(PdfSlideRenderer.pageCount(context, slidePdf), PdfSlideRenderer.renderPage(context, slidePdf, currentPage))
             }
+            pageCount = result.first
+            slideBitmap = result.second
         } else {
-            slideBitmap = null
+            slideBitmap = null; pageCount = 0
         }
-        // Reset zoom whenever the page changes so the student doesn't stay zoomed-in on the next slide.
+        // Reset zoom whenever the page changes so you don't stay zoomed-in on the next slide.
         zoomScale = 1f; zoomOffsetX = 0f; zoomOffsetY = 0f
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp)) {
-            Text(
-                "LIVE",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.8.sp,
-                color = Color(0xFF1B6B79)
-            )
-            Spacer(Modifier.height(6.dp))
+    fun startClass() {
+        starting = true
+        msg = "Starting class..."
+        AgoraLiveAudio.onJoined = {
+            starting = false; connected = true; msg = ""
+            FirebaseDatabase.getInstance().getReference("liveClasses/default/active").setValue(true)
+        }
+        AgoraLiveAudio.onUserJoined = { participantCount++ }
+        AgoraLiveAudio.onUserLeft = { if (participantCount > 0) participantCount-- }
+        AgoraLiveAudio.onError = { err -> starting = false; msg = "Could not start: $err" }
+        AgoraLiveAudio.join(context, "default", 1)
+    }
+
+    fun stopClass() {
+        AgoraLiveAudio.leave()
+        connected = false; msg = ""; participantCount = 0
+        FirebaseDatabase.getInstance().getReference("liveClasses/default/active").setValue(false)
+        FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests").removeValue()
+    }
+
+    fun goToPage(page: Int) {
+        val clamped = page.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
+        FirebaseDatabase.getInstance().getReference("liveClasses/default/currentPage").setValue(clamped)
+    }
+
+    if (!connected) {
+        Column(
+            modifier = Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(16.dp))
+                .border(1.5.dp, LIVE_GOLD, RoundedCornerShape(16.dp)).padding(18.dp)
+        ) {
+            Box(modifier = Modifier.background(if (isLive) Color(0xFFE3F5E9) else Color(0xFFE3DFD3), RoundedCornerShape(100.dp)).padding(horizontal = 14.dp, vertical = 6.dp)) {
+                Text(if (isLive) "● Live Now" else "● Not Live", color = if (isLive) Color(0xFF1F7A3D) else Color(0xFF8A8F99), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(14.dp))
+            Text("Start the live class — students will be able to join and hear you as soon as you start.", fontSize = 12.5.sp, color = Color(0xFF5B5F6B))
+            Spacer(Modifier.height(14.dp))
+            Button(
+                onClick = { startClass() }, enabled = !starting,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1F7A3D)),
+                shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().height(48.dp)
+            ) {
+                if (starting) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                else Text("▶ Start Live Class", fontWeight = FontWeight.Bold, color = Color.White)
+            }
+            if (msg.isNotEmpty()) { Spacer(Modifier.height(10.dp)); Text(msg, fontSize = 12.sp, color = Color(0xFF946B00)) }
+        }
+        return
+    }
+
+    // ---------- Connected: full dark "Smart Digital Board" layout ----------
+    Column(modifier = Modifier.fillMaxWidth()) {
+
+        // Dark status strip: S.D.BOARD | Connected: N | ON_AIR — monospace labels.
+        Row(
+            modifier = Modifier.fillMaxWidth().background(LIVE_NAVY).padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BlinkingDot(LIVE_GREEN)
+                Spacer(Modifier.width(7.dp))
+                Text("S.D.BOARD", color = Color.White.copy(alpha = 0.9f), fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, letterSpacing = 1.5.sp)
+            }
             Box(
-                modifier = Modifier
-                    .background(Color(0xFFC0392B), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                modifier = Modifier.background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(100.dp))
+                    .border(1.dp, LIVE_GOLD.copy(alpha = 0.5f), RoundedCornerShape(100.dp))
+                    .padding(horizontal = 14.dp, vertical = 5.dp)
             ) {
-                Text("Live Class", color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold)
+                Text("Connected: $participantCount", color = LIVE_GOLD, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BlinkingDot(LIVE_GREEN)
+                Spacer(Modifier.width(7.dp))
+                Text("ON_AIR", color = LIVE_GREEN, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, letterSpacing = 1.sp)
             }
         }
-        Spacer(Modifier.height(14.dp))
 
-        if (!joined) {
-            // ---------- Not yet joined: same simple join form as before ----------
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 22.dp)
-                    .background(Color.White)
-                    .border(1.5.dp, SLIVE_GOLD)
-                    .padding(vertical = 22.dp, horizontal = 20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier
-                        .background(if (isLive) Color(0xFFE3F5E9) else Color(0xFFE3DFD3), RoundedCornerShape(100.dp))
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        if (isLive) "● Live Now" else "● Not Live Right Now",
-                        color = if (isLive) Color(0xFF1F7A3D) else Color(0xFF8A8F99),
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Spacer(Modifier.height(14.dp))
-
-                Text(
-                    "Join to hear the teacher live and follow along with shared slides. You can raise your hand any time to ask something.",
-                    fontSize = 12.5.sp,
-                    color = Color(0xFF5B5F6B),
-                    textAlign = TextAlign.Center,
-                    lineHeight = 18.sp
+        // Plain fillMaxWidth — no offset/measuring needed. This card's root
+        // Column (above) has no padding of its own, and HomeScreen-equivalent
+        // callers were confirmed to add none either, so this is naturally
+        // edge-to-edge with zero guesswork.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(420.dp)
+                .background(Color.White)
+                .border(0.75.dp, Color.Black)
+                .onSizeChanged { boardSizePx = it }
+                .graphicsLayer(
+                    scaleX = zoomScale, scaleY = zoomScale,
+                    translationX = zoomOffsetX, translationY = zoomOffsetY
                 )
-                Spacer(Modifier.height(16.dp))
-
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text("Your Name *", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
-                    Spacer(Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true,
-                        enabled = !joining
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    Text("Your Registered Mobile Number *", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A1A))
-                    Spacer(Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value = mobile,
-                        onValueChange = { if (it.length <= 10) mobile = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true,
-                        enabled = !joining,
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone
-                        )
-                    )
-                }
-
-                Spacer(Modifier.height(16.dp))
-                Button(
-                    onClick = { startJoinFlow() },
-                    enabled = !joining,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE85D4C)),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().height(48.dp)
-                ) {
-                    if (joining) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    } else {
-                        Text("Join Live Class", fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-                }
-
-                if (joinMsg.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    Text(joinMsg, fontSize = 12.sp, color = Color(0xFF946B00), textAlign = TextAlign.Center)
-                }
-            }
-        } else {
-            // ---------- Joined: same "Smart Digital Board" look as the teacher's screen ----------
-            Column(modifier = Modifier.fillMaxWidth()) {
-
-                Row(
-                    modifier = Modifier.fillMaxWidth().background(SLIVE_NAVY).padding(horizontal = 14.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        StudentBlinkingDot(SLIVE_GREEN)
-                        Spacer(Modifier.width(7.dp))
-                        Text("S.D.BOARD", color = Color.White.copy(alpha = 0.9f), fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, letterSpacing = 1.5.sp)
-                    }
-                    Box(
-                        modifier = Modifier.background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(100.dp))
-                            .border(1.dp, SLIVE_GOLD.copy(alpha = 0.5f), RoundedCornerShape(100.dp))
-                            .padding(horizontal = 14.dp, vertical = 5.dp)
-                    ) {
-                        Text("Connected: $participantCount", color = SLIVE_GOLD, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        StudentBlinkingDot(SLIVE_GREEN)
-                        Spacer(Modifier.width(7.dp))
-                        Text("ON_AIR", color = SLIVE_GREEN, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, letterSpacing = 1.sp)
-                    }
-                }
-
-                // Plain fillMaxWidth — no offset/measuring needed anymore, since
-                // the root Column above no longer wraps this section in any
-                // padding (HomeScreen.kt confirmed there's none above it either).
-                // Pinch-to-zoom + pan via graphicsLayer, same pattern as the teacher's board.
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(420.dp)
-                        .background(Color.White)
-                        .border(0.75.dp, Color.Black)
-                        .onSizeChanged { boardSizePx = it }
-                        .graphicsLayer(
-                            scaleX = zoomScale, scaleY = zoomScale,
-                            translationX = zoomOffsetX, translationY = zoomOffsetY
-                        )
-                        .pointerInput(Unit) {
-                            detectTransformGestures { _, pan, gestureZoom, _ ->
-                                zoomScale = (zoomScale * gestureZoom).coerceIn(1f, 4f)
-                                val maxOffsetX = (boardSizePx.width * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
-                                val maxOffsetY = (boardSizePx.height * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
-                                zoomOffsetX = (zoomOffsetX + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
-                                zoomOffsetY = (zoomOffsetY + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
-                            }
-                        }
-                ) {
+        ) {
+            when (boardMode) {
+                BoardMode.PDF -> {
                     if (slideBitmap != null) {
-                        Image(
-                            bitmap = slideBitmap!!.asImageBitmap(),
-                            contentDescription = "Slide",
-                            contentScale = ContentScale.FillBounds,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else if (slidePdf.isNotBlank()) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = SLIVE_NAVY)
-                        }
-                    } else {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("🔊 You're connected", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F7A3D))
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(14.dp))
-                // fillMaxWidth + weight(1f) on each button so all three (Mute,
-                // Please Repeat, Leave) always fit within the screen width —
-                // nothing gets pushed off-screen anymore.
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            muted = !muted
-                            AgoraLiveAudio.setMuted(muted)
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (muted) Color(0xFF8A8F99) else Color(0xFF1B6B79)),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp)
-                    ) {
-                        Text(if (muted) "🔇 Unmute" else "🎤 Mute", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
-                    }
-                    Button(
-                        onClick = { sendRepeatRequest() },
-                        enabled = !repeatSent,
-                        colors = ButtonDefaults.buttonColors(containerColor = if (repeatSent) Color(0xFF8A8F99) else SLIVE_GOLD),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp)
-                    ) {
-                        Text(if (repeatSent) "🔁 Sent" else "🔁 Repeat", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
-                    }
-                    Button(
-                        onClick = {
-                            AgoraLiveAudio.leave()
-                            if (studentUid != 0) {
-                                FirebaseDatabase.getInstance().getReference("liveClasses/default/repeatRequests")
-                                    .child(studentUid.toString()).removeValue()
+                        Image(bitmap = slideBitmap!!.asImageBitmap(), contentDescription = "Slide", contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
+                        } else {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(if (slidePdf.isBlank()) "No PDF shared yet." else "Loading...", fontSize = 12.sp, color = Color(0xFF8A8F99))
                             }
-                            joined = false
-                            joinMsg = ""
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC0392B)),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp)
-                    ) {
-                        Text("Leave", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
+                        }
+                    }
+                    BoardMode.PASTE_TEXT -> {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Text(pastedText.ifBlank { "Paste text below to show it here." }, fontSize = 15.sp, color = Color(0xFF1A1A1A), lineHeight = 22.sp)
+                        }
+                    }
+                    BoardMode.WHITEBOARD -> {
+                        Box(Modifier.fillMaxSize())
                     }
                 }
+                AnnotationCanvas(
+                    modifier = Modifier.fillMaxSize(),
+                    tool = tool, color = penColor, penWidth = penWidth,
+                    strokes = strokes, redoStack = redoStack,
+                    swipeEnabled = boardMode == BoardMode.PDF,
+                    onSwipeLeft = { if (currentPage < pageCount - 1) goToPage(currentPage + 1) },
+                    onSwipeRight = { if (currentPage > 0) goToPage(currentPage - 1) },
+                    onZoomPan = { zoomChange, panChange ->
+                        zoomScale = (zoomScale * zoomChange).coerceIn(1f, 4f)
+                        val maxOffsetX = (boardSizePx.width * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
+                        val maxOffsetY = (boardSizePx.height * (zoomScale - 1f) / 2f).coerceAtLeast(0f)
+                        zoomOffsetX = (zoomOffsetX + panChange.x).coerceIn(-maxOffsetX, maxOffsetX)
+                        zoomOffsetY = (zoomOffsetY + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
+                    }
+                )
+        }
 
-                if (joinMsg.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    Text(joinMsg, fontSize = 12.sp, color = Color(0xFF946B00), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp))
+        // Dark page-nav strip under the board
+        Row(
+            modifier = Modifier.fillMaxWidth().background(LIVE_NAVY).padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (boardMode == BoardMode.PDF && pageCount > 0) {
+                Box(
+                    modifier = Modifier.background(Color.Transparent, RoundedCornerShape(10.dp))
+                        .border(1.5.dp, LIVE_GOLD, RoundedCornerShape(10.dp))
+                        .clickable(enabled = currentPage > 0) { goToPage(currentPage - 1) }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) { Text("‹", color = LIVE_GOLD, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+                Spacer(Modifier.width(10.dp))
+                Box(modifier = Modifier.background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp)) {
+                    Text("${currentPage + 1}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
+                Spacer(Modifier.width(6.dp))
+                Text("/", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
+                Spacer(Modifier.width(6.dp))
+                Box(modifier = Modifier.background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp)) {
+                    Text("$pageCount", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(10.dp))
+                Box(
+                    modifier = Modifier.background(Color.Transparent, RoundedCornerShape(10.dp))
+                        .border(1.5.dp, LIVE_GOLD, RoundedCornerShape(10.dp))
+                        .clickable(enabled = currentPage < pageCount - 1) { goToPage(currentPage + 1) }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) { Text("›", color = LIVE_GOLD, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+            } else {
+                Text("No page controls in this mode", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp)
             }
         }
-        Spacer(Modifier.height(16.dp))
+
+        Column(modifier = Modifier.fillMaxWidth().background(LIVE_NAVY).padding(horizontal = 16.dp, vertical = 16.dp)) {
+
+            if (repeatCount > 0) {
+                Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFFCF3D9), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Text("🔁 $repeatCount student(s) asked you to repeat", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF946B00))
+                }
+                Spacer(Modifier.height(14.dp))
+            }
+
+            // Mode switch: PDF / Paste Text / Whiteboard — ONLY switches, does nothing else.
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(Triple(BoardMode.PDF, "📄", "PDF"), Triple(BoardMode.PASTE_TEXT, "📜", "Paste Text"), Triple(BoardMode.WHITEBOARD, "✏️", "Whiteboard")).forEach { (mode, icon, label) ->
+                    Box(
+                        modifier = Modifier.weight(1f)
+                            .background(LIVE_NAVY, RoundedCornerShape(100.dp))
+                            .border(if (boardMode == mode) 1.5.dp else 0.dp, LIVE_GOLD, RoundedCornerShape(100.dp))
+                            .clickable {
+                                boardMode = mode
+                                if (mode == BoardMode.PASTE_TEXT && pastedText.isBlank()) pasteEditing = true
+                            }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("$icon $label", color = if (boardMode == mode) LIVE_GOLD else Color.White.copy(alpha = 0.85f), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            // Tool row — LazyRow keeps ALL tools in one horizontally-scrolling
+            // line; nothing ever wraps to a second row, no matter how many tools.
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(listOf(
+                    AnnotationTool.POINTER to "👆", AnnotationTool.MOVE to "✋", AnnotationTool.MARKER to "✏️", AnnotationTool.HIGHLIGHTER to "🖍️",
+                    AnnotationTool.ERASER to "🧹", AnnotationTool.RECTANGLE to "▭", AnnotationTool.CIRCLE to "○",
+                    AnnotationTool.LINE to "➖", AnnotationTool.ARROW to "➡️"
+                )) { (t, icon) ->
+                    val active = tool == t
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .background(if (active) LIVE_GOLD else LIVE_NAVY, RoundedCornerShape(14.dp))
+                            .border(1.dp, if (active) LIVE_GOLD else Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+                            .clickable { tool = t },
+                        contentAlignment = Alignment.Center
+                    ) { Text(icon, fontSize = 19.sp) }
+                }
+                item {
+                    Box(
+                        modifier = Modifier.size(52.dp).background(LIVE_NAVY, RoundedCornerShape(14.dp))
+                            .clickable { if (strokes.isNotEmpty()) { redoStack.add(strokes.removeAt(strokes.size - 1)) } },
+                        contentAlignment = Alignment.Center
+                    ) { Text("↩", fontSize = 18.sp, color = Color.White) }
+                }
+                item {
+                    Box(
+                        modifier = Modifier.size(52.dp).background(LIVE_NAVY, RoundedCornerShape(14.dp))
+                            .clickable { if (redoStack.isNotEmpty()) { strokes.add(redoStack.removeAt(redoStack.size - 1)) } },
+                        contentAlignment = Alignment.Center
+                    ) { Text("↪", fontSize = 18.sp, color = Color.White) }
+                }
+                item {
+                    Box(
+                        modifier = Modifier.size(52.dp).background(Color(0xFF3A1A1A), RoundedCornerShape(14.dp))
+                            .clickable { strokes.clear(); redoStack.clear() },
+                        contentAlignment = Alignment.Center
+                    ) { Text("🧹", fontSize = 18.sp) }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("COLOUR:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF8A8F99), fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                TOOL_COLORS.forEach { c ->
+                    Box(
+                        modifier = Modifier.size(30.dp).background(c, CircleShape)
+                            .border(if (penColor == c) 3.dp else 0.dp, LIVE_GOLD, CircleShape)
+                            .clickable { penColor = c }
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Thin" to 3f, "Medium" to 6f, "Thick" to 12f).forEach { (label, w) ->
+                    Box(
+                        modifier = Modifier.background(if (penWidth == w) LIVE_GOLD else LIVE_NAVY, RoundedCornerShape(100.dp))
+                            .clickable { penWidth = w }.padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) { Text(label, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = if (penWidth == w) Color(0xFF12203D) else Color(0xFF8A8F99)) }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = { muted = !muted; AgoraLiveAudio.setMuted(muted) },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (muted) Color(0xFF8A8F99) else Color(0xFF1B6B79)),
+                    shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f).height(52.dp)
+                ) { Text(if (muted) "🔇 UNMUTE" else "🎤 MUTE", color = Color.White, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontSize = 13.sp) }
+                Button(
+                    onClick = { stopClass() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC0392B)),
+                    shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f).height(52.dp)
+                ) { Text("⏹ STOP CLASS", color = Color.White, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontSize = 13.sp) }
+            }
+
+            // ---- Below Mute/Stop: PDF upload AND Paste+Save always together here,
+            // regardless of which mode the top switcher currently shows. ----
+            Spacer(Modifier.height(14.dp))
+
+            Button(
+                onClick = { pdfPickerLauncher.launch("application/pdf") }, enabled = !uploading,
+                colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD), shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth().height(44.dp)
+            ) {
+                if (uploading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Text(if (slidePdf.isBlank()) "📂 Share PDF Files" else "📂 Change PDF Files", color = Color(0xFF12203D), fontWeight = FontWeight.Bold)
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            if (pasteEditing) {
+                OutlinedTextField(
+                    value = pastedTextDraft, onValueChange = { pastedTextDraft = it },
+                    modifier = Modifier.fillMaxWidth().height(90.dp),
+                    placeholder = { Text("Paste text to show on board...") }
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        pastedText = pastedTextDraft
+                        pasteEditing = false // collapse after saving
+                        boardMode = BoardMode.PASTE_TEXT // auto-show it on the board
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = LIVE_GOLD),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(42.dp)
+                ) { Text("💾 Save to Board", color = Color(0xFF12203D), fontWeight = FontWeight.Bold) }
+            } else {
+                Button(
+                    onClick = {
+                        pastedTextDraft = pastedText
+                        pasteEditing = true
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF5F3EC)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(42.dp)
+                ) { Text(if (pastedText.isBlank()) "📜 Paste Text" else "✏️ Edit Text", color = Color(0xFF12203D), fontWeight = FontWeight.Bold) }
+            }
+
+            if (msg.isNotEmpty()) { Spacer(Modifier.height(10.dp)); Text(msg, fontSize = 12.sp, color = LIVE_GOLD, textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+        }
     }
 }
