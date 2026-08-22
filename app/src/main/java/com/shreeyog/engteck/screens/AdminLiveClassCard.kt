@@ -327,7 +327,7 @@ fun AdminLiveClassCard(teacherKey: String, teacherName: String = "Teacher") {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(420.dp)
+                .height(480.dp)
                 .background(Color.White)
                 .border(0.75.dp, Color.Black)
                 .clip(androidx.compose.ui.graphics.RectangleShape)
