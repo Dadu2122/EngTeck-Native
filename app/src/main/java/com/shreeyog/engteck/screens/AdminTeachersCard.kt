@@ -1,13 +1,10 @@
 package com.shreeyog.engteck.screens
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.util.Base64
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,68 +12,54 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
-import java.io.ByteArrayOutputStream
+import com.google.firebase.database.ValueEventListener
+
+data class TeacherEntry(val key: String, val name: String, val pin: String)
 
 @Composable
-fun AdminTeacherProfileCard() {
-    val context = LocalContext.current
-    var teacherName by remember { mutableStateOf("") }
-    var roleLabel by remember { mutableStateOf("FACULTY") }
-    var qual1 by remember { mutableStateOf("") }
-    var qual2 by remember { mutableStateOf("") }
-    var photoBase64 by remember { mutableStateOf<String?>(null) }
+fun AdminTeachersCard() {
+    var teachers by remember { mutableStateOf<List<TeacherEntry>>(emptyList()) }
+    var liveStatus by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     var loading by remember { mutableStateOf(true) }
-    var saving by remember { mutableStateOf(false) }
-    var uploadingPhoto by remember { mutableStateOf(false) }
-    var statusMsg by remember { mutableStateOf("") }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var deletingTeacher by remember { mutableStateOf<TeacherEntry?>(null) }
 
-    LaunchedEffect(Unit) {
-        FirebaseDatabase.getInstance().getReference("content")
-            .get()
-            .addOnSuccessListener { snapshot ->
+    DisposableEffect(Unit) {
+        val ref = FirebaseDatabase.getInstance().getReference("teachers")
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
                 loading = false
-                teacherName = snapshot.child("teacherName").getValue(String::class.java) ?: ""
-                roleLabel = snapshot.child("roleLabel").getValue(String::class.java) ?: "FACULTY"
-                qual1 = snapshot.child("qual1").getValue(String::class.java) ?: ""
-                qual2 = snapshot.child("qual2").getValue(String::class.java) ?: ""
-                photoBase64 = snapshot.child("teacherPhotoBase64").getValue(String::class.java)
+                teachers = snapshot.children.mapNotNull { c ->
+                    val name = c.child("name").getValue(String::class.java) ?: return@mapNotNull null
+                    val pin = c.child("adminPin").getValue(String::class.java) ?: ""
+                    TeacherEntry(c.key ?: "", name, pin)
+                }
             }
-            .addOnFailureListener { loading = false }
+            override fun onCancelled(error: DatabaseError) { loading = false }
+        }
+        ref.addValueEventListener(listener)
+        onDispose { ref.removeEventListener(listener) }
     }
 
-    val photoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            uploadingPhoto = true
-            try {
-                val input = context.contentResolver.openInputStream(uri)
-                val original = BitmapFactory.decodeStream(input)
-                input?.close()
-                if (original != null) {
-                    // Downscale so base64 stays small enough for Realtime Database (no Storage/Blaze needed).
-                    val maxDim = 500
-                    val scale = minOf(1f, maxDim.toFloat() / maxOf(original.width, original.height))
-                    val resized = if (scale < 1f) {
-                        Bitmap.createScaledBitmap(original, (original.width * scale).toInt(), (original.height * scale).toInt(), true)
-                    } else original
-                    val out = ByteArrayOutputStream()
-                    resized.compress(Bitmap.CompressFormat.JPEG, 80, out)
-                    val b64 = "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-                    photoBase64 = b64
-                    statusMsg = "Photo ready — ab neeche 'Save' dabao."
-                } else {
-                    statusMsg = "Photo padhne me dikkat aayi."
+    // Live status per teacher — each gets its own tiny listener on liveClasses/{key}/active.
+    teachers.forEach { t ->
+        DisposableEffect(t.key) {
+            val ref = FirebaseDatabase.getInstance().getReference("liveClasses/${t.key}/active")
+            val listener = object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val isLive = snapshot.getValue(Boolean::class.java) ?: false
+                    liveStatus = liveStatus + (t.key to isLive)
                 }
-            } catch (e: Exception) {
-                statusMsg = "Upload failed: ${e.message}"
+                override fun onCancelled(error: DatabaseError) {}
             }
-            uploadingPhoto = false
+            ref.addValueEventListener(listener)
+            onDispose { ref.removeEventListener(listener) }
         }
     }
 
@@ -87,109 +70,137 @@ fun AdminTeacherProfileCard() {
             .border(1.dp, Color(0xFFE3DFD3), RoundedCornerShape(16.dp))
             .padding(18.dp)
     ) {
-        Text("Teacher Profile Card", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
+        Text(
+            "Har teacher ka apna naam + PIN — multiple teachers ek saath, alag-alag apni live class chala sakte hain (har ek ki apni class, apna chat/doubts/MCQ — sab alag).",
+            fontSize = 11.5.sp, color = Color(0xFF5B5F6B), lineHeight = 16.sp
+        )
         Spacer(Modifier.height(14.dp))
 
         if (loading) {
             CircularProgressIndicator(color = Color(0xFF12203D))
+        } else if (teachers.isEmpty()) {
+            Text("Koi teacher add nahi hai abhi.", fontSize = 12.sp, color = Color(0xFF5B5F6B))
         } else {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .size(110.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFFF5F3EC))
-                    .border(2.dp, Color(0xFFD4A017), RoundedCornerShape(18.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (!photoBase64.isNullOrBlank()) {
-                    AsyncImage(
-                        model = photoBase64,
-                        contentDescription = "Teacher photo",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp))
-                    )
-                } else {
-                    Text("No Photo", fontSize = 11.sp, color = Color(0xFF8A8F99))
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                teachers.forEach { t ->
+                    val isLive = liveStatus[t.key] ?: false
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF5F3EC), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("${t.name} — PIN: ${t.pin}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
+                            if (isLive) {
+                                Spacer(Modifier.height(4.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(7.dp).background(Color(0xFF1F7A3D), CircleShape))
+                                    Spacer(Modifier.width(5.dp))
+                                    Text("Live", fontSize = 11.sp, color = Color(0xFF1F7A3D), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFFD4A017))
+                                .clickable { deletingTeacher = t }
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Text("✕", color = Color(0xFF12203D), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                    }
                 }
-            }
-
-            Spacer(Modifier.height(12.dp))
-            Button(
-                onClick = { photoPickerLauncher.launch("image/*") },
-                enabled = !uploadingPhoto,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B6EA8)),
-                shape = RoundedCornerShape(100.dp),
-                modifier = Modifier.align(Alignment.CenterHorizontally).height(44.dp)
-            ) {
-                if (uploadingPhoto) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("📁 Change Teacher Photo", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            Spacer(Modifier.height(18.dp))
-            Text("Teacher Name", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF5B5F6B))
-            Spacer(Modifier.height(4.dp))
-            OutlinedTextField(
-                value = teacherName, onValueChange = { teacherName = it },
-                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), singleLine = true,
-                placeholder = { Text("e.g. Amar Sharma") }
-            )
-            Spacer(Modifier.height(12.dp))
-            Text("Role Label", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF5B5F6B))
-            Spacer(Modifier.height(4.dp))
-            OutlinedTextField(
-                value = roleLabel, onValueChange = { roleLabel = it },
-                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), singleLine = true,
-                placeholder = { Text("e.g. FACULTY / PRINCIPAL") }
-            )
-            Spacer(Modifier.height(12.dp))
-            Text("Qualification", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF5B5F6B))
-            Spacer(Modifier.height(4.dp))
-            OutlinedTextField(
-                value = qual1, onValueChange = { qual1 = it },
-                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), singleLine = true,
-                placeholder = { Text("e.g. M.A. English, B.Ed.") }
-            )
-            Spacer(Modifier.height(12.dp))
-            Text("Exams Qualified", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF5B5F6B))
-            Spacer(Modifier.height(4.dp))
-            OutlinedTextField(
-                value = qual2, onValueChange = { qual2 = it },
-                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), singleLine = true,
-                placeholder = { Text("e.g. UGC-NET, UPTET") }
-            )
-
-            if (statusMsg.isNotEmpty()) {
-                Spacer(Modifier.height(10.dp))
-                Text(statusMsg, fontSize = 11.5.sp, color = Color(0xFF946B00))
-            }
-
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    saving = true
-                    val data = mutableMapOf<String, Any>(
-                        "teacherName" to teacherName,
-                        "roleLabel" to roleLabel,
-                        "qual1" to qual1,
-                        "qual2" to qual2
-                    )
-                    photoBase64?.let { data["teacherPhotoBase64"] = it }
-                    FirebaseDatabase.getInstance().getReference("content")
-                        .updateChildren(data)
-                        .addOnSuccessListener { saving = false; statusMsg = "Saved ✓" }
-                        .addOnFailureListener { saving = false; statusMsg = "Save failed — try again." }
-                },
-                enabled = !saving,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4A017), contentColor = Color(0xFF12203D)),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().height(46.dp)
-            ) {
-                Text(if (saving) "Saving..." else "💾 Save", fontWeight = FontWeight.Bold)
             }
         }
+
+        Spacer(Modifier.height(14.dp))
+        Button(
+            onClick = { showAddDialog = true },
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE85D4C)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp)
+        ) {
+            Text("+ Add Teacher", color = Color.White, fontWeight = FontWeight.Bold)
+        }
     }
+
+    if (showAddDialog) {
+        AddTeacherDialog(
+            onDismiss = { showAddDialog = false },
+            onSave = { name, pin ->
+                val ref = FirebaseDatabase.getInstance().getReference("teachers").push()
+                ref.setValue(mapOf("name" to name, "adminPin" to pin))
+                showAddDialog = false
+            }
+        )
+    }
+
+    deletingTeacher?.let { t ->
+        AlertDialog(
+            onDismissRequest = { deletingTeacher = null },
+            title = { Text("Remove ${t.name}?", fontWeight = FontWeight.Bold) },
+            text = { Text("Ye teacher ka login PIN hamesha ke liye hat jayega. Unki live class bhi band ho jayegi.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val db = FirebaseDatabase.getInstance()
+                    db.getReference("teachers").child(t.key).removeValue()
+                    db.getReference("liveClasses").child(t.key).removeValue()
+                    deletingTeacher = null
+                }) { Text("Remove", color = Color(0xFFC0392B), fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingTeacher = null }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun AddTeacherDialog(onDismiss: () -> Unit, onSave: (name: String, pin: String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var pin by remember { mutableStateOf((1000..9999).random().toString()) }
+    var error by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Teacher", fontWeight = FontWeight.Bold, color = Color(0xFF12203D)) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it },
+                    label = { Text("Teacher Name *") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = pin, onValueChange = { if (it.length <= 6) pin = it.filter { c -> c.isDigit() } },
+                    label = { Text("Admin PIN") }, singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text("Auto-generated — ise change kar sakte ho, teacher isi PIN se admin panel me login karega.", fontSize = 10.5.sp, color = Color(0xFF8A8F99))
+                if (error.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(error, color = Color(0xFFC0392B), fontSize = 11.5.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (name.isBlank() || pin.isBlank()) {
+                    error = "Naam aur PIN dono zaroori hain"
+                    return@TextButton
+                }
+                onSave(name.trim(), pin.trim())
+            }) { Text("Add", color = Color(0xFF1F7A3D), fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
