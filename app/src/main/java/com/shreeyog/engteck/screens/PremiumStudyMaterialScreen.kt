@@ -137,6 +137,155 @@ private fun PsmDownloadPdfButton(title: String, body: String) {
     }
 }
 
+private fun psmWrapLines(text: String, paint: android.graphics.Paint, maxWidth: Float): List<String> {
+    if (text.isEmpty()) return listOf("")
+    val words = text.split(" ")
+    val lines = mutableListOf<String>()
+    var cur = StringBuilder()
+    for (w in words) {
+        val test = if (cur.isEmpty()) w else "$cur $w"
+        if (paint.measureText(test) > maxWidth && cur.isNotEmpty()) { lines.add(cur.toString()); cur = StringBuilder(w) }
+        else cur = StringBuilder(test)
+    }
+    if (cur.isNotEmpty()) lines.add(cur.toString())
+    return lines
+}
+
+private fun psmSaveMcqPdf(context: android.content.Context, title: String, questions: List<PsmQuestion>): String? {
+    return try {
+        val pageWidth = 595
+        val pageHeight = 842
+        val document = android.graphics.pdf.PdfDocument()
+        val margin = 30f
+        val contentWidth = pageWidth - margin * 2 - 20f
+
+        val titlePaint = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; textSize = 17f; isFakeBoldText = true }
+        val subtitlePaint = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; textSize = 10.5f }
+        val bandPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x12, 0x20, 0x3D) }
+        val qPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x1A, 0x1A, 0x1A); textSize = 12.5f; isFakeBoldText = true }
+        val optPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x1A, 0x1A, 0x1A); textSize = 11.5f }
+        val correctPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x1F, 0x7A, 0x3D); textSize = 11.5f; isFakeBoldText = true }
+        val correctBoxPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0xEA, 0xF6, 0xE9) }
+        val normalBoxPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0xFA, 0xF8, 0xF3) }
+        val answerLinePaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x1F, 0x7A, 0x3D); textSize = 12f; isFakeBoldText = true }
+        val explLabelPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x94, 0x6B, 0x00); textSize = 10f; isFakeBoldText = true }
+        val explBodyPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x1A, 0x1A, 0x1A); textSize = 11f }
+        val explBoxPaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0xFC, 0xF3, 0xD9) }
+        val circlePaint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x12, 0x20, 0x3D) }
+        val circleTextPaint = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; textSize = 10f; isFakeBoldText = true; textAlign = android.graphics.Paint.Align.CENTER }
+
+        var pageNumber = 1
+        var page = document.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+        var canvas = page.canvas
+
+        fun drawHeader(showSubtitle: Boolean) {
+            canvas.drawRect(0f, 0f, pageWidth.toFloat(), if (showSubtitle) 58f else 34f, bandPaint)
+            canvas.drawText(title, margin, 26f, titlePaint)
+            if (showSubtitle) canvas.drawText("Shree English Classes • Green = Correct Answer", margin, 46f, subtitlePaint)
+        }
+        drawHeader(true)
+        var y = 80f
+        val lineHeight = 14.5f
+
+        fun ensureSpace(needed: Float) {
+            if (y + needed > 810f) {
+                document.finishPage(page)
+                pageNumber++
+                page = document.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+                canvas = page.canvas
+                drawHeader(false)
+                y = 46f
+            }
+        }
+
+        questions.forEach { q ->
+            val qLines = psmWrapLines("${q.number}. ${q.question}", qPaint, contentWidth)
+            ensureSpace(qLines.size * lineHeight + 10f)
+            canvas.drawOval(margin, y - 10f, margin + 16f, y + 6f, circlePaint)
+            canvas.drawText(q.number, margin + 8f, y + 1f, circleTextPaint)
+            qLines.forEachIndexed { i, line -> canvas.drawText(line, margin + 22f, y + (i * lineHeight), qPaint) }
+            y += qLines.size * lineHeight + 6f
+
+            q.options.forEachIndexed { oi, opt ->
+                val letter = psmOptionLetter(opt, oi)
+                val text = psmOptionText(opt)
+                val isCorrect = letter == q.correctAnswer.trim()
+                val mark = if (isCorrect) "✓" else "✗"
+                val optLines = psmWrapLines("$mark $letter) $text", optPaint, contentWidth - 20f)
+                val boxHeight = optLines.size * lineHeight + 8f
+                ensureSpace(boxHeight + 4f)
+                val boxPaint = if (isCorrect) correctBoxPaint else normalBoxPaint
+                canvas.drawRoundRect(android.graphics.RectF(margin + 14f, y - 10f, pageWidth - margin, y - 10f + boxHeight), 6f, 6f, boxPaint)
+                val txtPaint = if (isCorrect) correctPaint else optPaint
+                optLines.forEachIndexed { i, line -> canvas.drawText(line, margin + 22f, y + (i * lineHeight), txtPaint) }
+                y += boxHeight + 3f
+            }
+
+            if (q.correctAnswer.isNotBlank()) {
+                ensureSpace(lineHeight + 4f)
+                canvas.drawText("Correct Answer: ${q.correctAnswer}", margin + 14f, y, answerLinePaint)
+                y += lineHeight + 2f
+            }
+
+            if (q.explanation.isNotBlank()) {
+                val explLines = psmWrapLines(q.explanation, explBodyPaint, contentWidth - 20f)
+                val boxHeight = (explLines.size + 1) * lineHeight + 8f
+                ensureSpace(boxHeight + 6f)
+                canvas.drawRoundRect(android.graphics.RectF(margin + 14f, y - 10f, pageWidth - margin, y - 10f + boxHeight), 6f, 6f, explBoxPaint)
+                canvas.drawText("Explanation", margin + 22f, y, explLabelPaint)
+                explLines.forEachIndexed { i, line -> canvas.drawText(line, margin + 22f, y + lineHeight + (i * lineHeight), explBodyPaint) }
+                y += boxHeight + 4f
+            }
+            y += 12f
+        }
+        document.finishPage(page)
+
+        val safeTitle = title.replace(Regex("[^a-zA-Z0-9]"), "_")
+        val fileName = "$safeTitle.pdf"
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { out -> document.writeTo(out) }
+                document.close()
+                "Downloads/$fileName"
+            } else { document.close(); null }
+        } else {
+            val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+            val file = java.io.File(downloadsDir, fileName)
+            java.io.FileOutputStream(file).use { document.writeTo(it) }
+            document.close()
+            file.absolutePath
+        }
+    } catch (e: Exception) { null }
+}
+
+@Composable
+private fun PsmDownloadMcqPdfButton(title: String, questions: List<PsmQuestion>) {
+    val context = LocalContext.current
+    Spacer(Modifier.height(14.dp))
+    Button(
+        onClick = {
+            val path = psmSaveMcqPdf(context, title, questions)
+            android.widget.Toast.makeText(
+                context,
+                if (path != null) "Saved to $path" else "Download failed, try again",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        },
+        colors = ButtonDefaults.buttonColors(containerColor = PSM_CORAL),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().height(46.dp)
+    ) {
+        Text("⬇ Download PDF", color = Color.White, fontWeight = FontWeight.Bold)
+    }
+}
+
 private val PSM_ANNOTATE_COLORS = listOf(
     "red" to Color(0xFFE85D4C),
     "navy" to PSM_NAVY,
@@ -985,7 +1134,7 @@ private fun PsmDailySetViewerScreen(catKey: String, firebaseRoot: String, partKe
     var loading by remember { mutableStateOf(true) }
     var questions by remember { mutableStateOf<List<PsmQuestion>>(emptyList()) }
     var dateStr by remember { mutableStateOf("") }
-    var quizMode by remember { mutableStateOf(false) } // false = With Answer, true = Without Answer
+    var quizMode by remember { mutableStateOf(false) }
     var showAnswerKey by remember { mutableStateOf(false) }
     var revealed by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var pickedLetters by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
@@ -999,75 +1148,74 @@ private fun PsmDailySetViewerScreen(catKey: String, firebaseRoot: String, partKe
         db.child("date").get().addOnSuccessListener { dateStr = it.getValue(String::class.java) ?: "" }
     }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFFFAF8F3)).verticalScroll(rememberScrollState()).padding(20.dp)) {
-        Text(label, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A))
-        if (dateStr.isNotEmpty()) {
-            Spacer(Modifier.height(4.dp))
-            Text("Today's Test — $dateStr", fontSize = 13.sp, color = Color(0xFF5B5F6B))
+    Column(Modifier.fillMaxSize().background(Color(0xFFFAF8F3)).verticalScroll(rememberScrollState())) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 20.dp)) {
+            Text(label, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A))
+            if (dateStr.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text("Today's Test — $dateStr", fontSize = 13.sp, color = Color(0xFF5B5F6B))
+            }
         }
-        Spacer(Modifier.height(14.dp))
 
         if (loading) {
-            CircularProgressIndicator(color = PSM_NAVY)
+            Box(Modifier.padding(horizontal = 20.dp)) { CircularProgressIndicator(color = PSM_NAVY) }
         } else if (questions.isEmpty()) {
-            Text("Coming soon.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
+            Text("Coming soon.", fontSize = 13.sp, color = Color(0xFF5B5F6B), modifier = Modifier.padding(horizontal = 20.dp))
         } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                Box(
-                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(100.dp))
-                        .background(if (!quizMode) PSM_GOLD else Color(0xFFF5F3EC))
-                        .clickable { quizMode = false }.padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center
-                ) { Text("✅ With Answer", color = if (!quizMode) PSM_NAVY else Color(0xFF5B5F6B), fontWeight = FontWeight.Bold, fontSize = 13.sp) }
-                Box(
-                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(100.dp))
-                        .background(if (quizMode) PSM_GOLD else Color(0xFFF5F3EC))
-                        .clickable { quizMode = true }.padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center
-                ) { Text("🎯 Without Answer", color = if (quizMode) PSM_NAVY else Color(0xFF5B5F6B), fontWeight = FontWeight.Bold, fontSize = 13.sp) }
-            }
-            Spacer(Modifier.height(10.dp))
-
-            val bodyForPdf = remember(questions) {
-                questions.joinToString("\n\n") { q ->
-                    val opts = q.options.joinToString("\n")
-                    "${q.number}. ${q.question}\n$opts" + if (q.correctAnswer.isNotBlank()) "\nCorrect Answer: ${q.correctAnswer}" else ""
+            Column(Modifier.padding(horizontal = 20.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(100.dp))
+                            .background(if (!quizMode) PSM_GOLD else Color(0xFFF5F3EC))
+                            .clickable { quizMode = false }.padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) { Text("✅ With Answer", color = if (!quizMode) PSM_NAVY else Color(0xFF5B5F6B), fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                    Box(
+                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(100.dp))
+                            .background(if (quizMode) PSM_GOLD else Color(0xFFF5F3EC))
+                            .clickable { quizMode = true }.padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) { Text("🎯 Without Answer", color = if (quizMode) PSM_NAVY else Color(0xFF5B5F6B), fontWeight = FontWeight.Bold, fontSize = 13.sp) }
                 }
-            }
-            PsmDownloadPdfButton(label, bodyForPdf)
-            Spacer(Modifier.height(10.dp))
 
-            val answerKey = questions.mapNotNull { q -> if (q.correctAnswer.isNotBlank()) q.number to q.correctAnswer else null }
-            if (answerKey.isNotEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().background(PSM_GREEN, RoundedCornerShape(12.dp))
-                        .clickable { showAnswerKey = !showAnswerKey }.padding(vertical = 13.dp),
-                    contentAlignment = Alignment.Center
-                ) { Text(if (showAnswerKey) "▲ Hide Answer Key" else "✅ Show Answer Key", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
-                if (showAnswerKey) {
-                    Spacer(Modifier.height(10.dp))
-                    Column {
-                        answerKey.chunked(5).forEach { rowItems ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 6.dp)) {
-                                rowItems.forEach { (num, ans) ->
-                                    Box(
-                                        modifier = Modifier.weight(1f).background(Color(0xFFF5F3EC), RoundedCornerShape(8.dp)).padding(vertical = 10.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) { Text("$num: $ans", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = PSM_NAVY) }
+                PsmDownloadMcqPdfButton(label, questions)
+                Spacer(Modifier.height(10.dp))
+
+                val answerKey = questions.mapNotNull { q -> if (q.correctAnswer.isNotBlank()) q.number to q.correctAnswer else null }
+                if (answerKey.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().background(PSM_GREEN, RoundedCornerShape(12.dp))
+                            .clickable { showAnswerKey = !showAnswerKey }.padding(vertical = 13.dp),
+                        contentAlignment = Alignment.Center
+                    ) { Text(if (showAnswerKey) "▲ Hide Answer Key" else "✅ Show Answer Key", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                    if (showAnswerKey) {
+                        Spacer(Modifier.height(10.dp))
+                        Column {
+                            answerKey.chunked(5).forEach { rowItems ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+                                    rowItems.forEach { (num, ans) ->
+                                        Box(
+                                            modifier = Modifier.weight(1f).background(Color(0xFFF5F3EC), RoundedCornerShape(8.dp)).padding(vertical = 10.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) { Text("$num: $ans", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = PSM_NAVY) }
+                                    }
+                                    repeat(5 - rowItems.size) { Spacer(Modifier.weight(1f)) }
                                 }
-                                repeat(5 - rowItems.size) { Spacer(Modifier.weight(1f)) }
                             }
                         }
                     }
                 }
+                Spacer(Modifier.height(14.dp))
             }
-            Spacer(Modifier.height(14.dp))
 
             questions.forEachIndexed { idx, q ->
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
-                        .background(Color.White, RoundedCornerShape(14.dp))
-                        .padding(vertical = 8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 14.dp)
+                        .background(Color.White, RoundedCornerShape(16.dp))
+                        .border(2.dp, PSM_GOLD, RoundedCornerShape(16.dp))
+                        .padding(vertical = 14.dp, horizontal = 18.dp)
                 ) {
                     Row(verticalAlignment = Alignment.Top) {
                         Box(modifier = Modifier.size(26.dp).background(PSM_NAVY, CircleShape), contentAlignment = Alignment.Center) {
@@ -1138,6 +1286,7 @@ private fun PsmDailySetViewerScreen(catKey: String, firebaseRoot: String, partKe
         }
     }
 }
+
 
 // ---------- Daily Practice: Mixed 125-Q — full scored test, matching the
 // website's renderMixedTestMode / renderMixedTestResult exactly (start card
