@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.graphics.Canvas
 import android.graphics.Color as AColor
 import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.pdf.PdfDocument
 import android.os.Build
 import android.os.Environment
@@ -81,6 +82,7 @@ private fun premiumOptionLetter(opt: String, idx: Int): String {
 private fun premiumOptionText(opt: String): String = opt.replace(Regex("^\\(?[A-Da-d][.)]\\s*"), "")
 
 private fun wrapPremiumText(text: String, paint: Paint, maxWidth: Float): List<String> {
+    if (text.isEmpty()) return listOf("")
     val words = text.split(" ")
     val lines = mutableListOf<String>()
     var current = StringBuilder()
@@ -97,163 +99,143 @@ private fun wrapPremiumText(text: String, paint: Paint, maxWidth: Float): List<S
     return lines
 }
 
-// Justified line drawing — stretches inter-word spaces to fill maxWidth. Last line of a
-// paragraph is left-aligned (standard typographic rule).
-private fun drawPremiumJustified(
-    canvas: Canvas,
-    line: String,
-    x: Float,
-    y: Float,
-    maxWidth: Float,
-    paint: Paint,
-    isLastLine: Boolean
-) {
-    val words = line.split(" ").filter { it.isNotEmpty() }
-    if (isLastLine || words.size <= 1) {
-        canvas.drawText(line, x, y, paint)
-        return
-    }
-    val textWidthNoSpaces = words.sumOf { paint.measureText(it).toDouble() }.toFloat()
-    val gapCount = words.size - 1
-    val totalGapWidth = maxWidth - textWidthNoSpaces
-    val gapWidth = if (totalGapWidth > 0) totalGapWidth / gapCount else paint.measureText(" ")
-    var cx = x
-    words.forEachIndexed { idx, word ->
-        canvas.drawText(word, cx, y, paint)
-        cx += paint.measureText(word)
-        if (idx < words.size - 1) cx += gapWidth
-    }
-}
-
+// ============================================================================
+// PDF generation — matches the "Colourful MCQ" style used across the app
+// (rounded option boxes, green highlight for the correct answer, dark navy
+// "SOLID FACT / EXPLANATION" box, diagonal watermark, gold header band,
+// "Page X of Y" footer). Uses the same two-pass approach as psmSaveMcqPdf:
+// a dry run computes totalPages first, then the real draw pass breaks pages
+// at the exact same spots — so the footer page count is always correct.
+// ============================================================================
 private fun buildPremiumPdfDocument(title: String, questions: List<PremiumQuestion>): PdfDocument {
     val pageWidth = 595
     val pageHeight = 842
-    val leftMargin = 24f
-    val rightMargin = 24f
-    val contentWidth = pageWidth - leftMargin - rightMargin
+    val margin = 30f
+    val contentWidth = pageWidth - margin * 2 - 20f
+    val lineHeight = 14.5f
     val document = PdfDocument()
 
-    val titlePaint = Paint().apply { color = AColor.WHITE; textSize = 20f; isFakeBoldText = true }
-    val subtitlePaint = Paint().apply { color = AColor.argb(200, 255, 255, 255); textSize = 11f }
+    val titlePaint = Paint().apply { color = AColor.WHITE; textSize = 17f; isFakeBoldText = true; textAlign = Paint.Align.CENTER }
+    val subtitlePaint = Paint().apply { color = AColor.WHITE; textSize = 10.5f; textAlign = Paint.Align.CENTER }
     val bandPaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
-    val goldPaint = Paint().apply { color = AColor.rgb(0xD4, 0xA0, 0x17) }
-    val cardBgEven = Paint().apply { color = AColor.WHITE }
-    val cardBgOdd = Paint().apply { color = AColor.rgb(0xF5, 0xF3, 0xEC) }
-    val dividerPaint = Paint().apply { color = AColor.rgb(0xD4, 0xA0, 0x17); strokeWidth = 1.5f }
-    val borderPaint = Paint().apply {
-        color = AColor.rgb(0xD4, 0xA0, 0x17)
-        style = Paint.Style.STROKE
-        strokeWidth = 3f
+    val qPaint = Paint().apply { color = AColor.rgb(0x1A, 0x1A, 0x1A); textSize = 12.5f; isFakeBoldText = true }
+    val optPaint = Paint().apply { color = AColor.rgb(0x1A, 0x1A, 0x1A); textSize = 11.5f }
+    val correctPaint = Paint().apply { color = AColor.rgb(0x1F, 0x7A, 0x3D); textSize = 11.5f; isFakeBoldText = true }
+    val correctBoxPaint = Paint().apply { color = AColor.rgb(0xEA, 0xF6, 0xE9) }
+    val correctBorderPaint = Paint().apply { color = AColor.rgb(0x2E, 0x9B, 0x53); style = Paint.Style.STROKE; strokeWidth = 2f }
+    val normalBoxPaint = Paint().apply { color = AColor.rgb(0xFA, 0xF8, 0xF3) }
+    val normalBorderPaint = Paint().apply { color = AColor.rgb(0xD9, 0xD3, 0xC4); style = Paint.Style.STROKE; strokeWidth = 1.5f }
+    val explLabelPaint = Paint().apply { color = AColor.rgb(0xD4, 0xA0, 0x17); textSize = 10f; isFakeBoldText = true }
+    val explBodyPaint = Paint().apply { color = AColor.WHITE; textSize = 11f }
+    val explBoxPaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
+    val footerRightPaint = Paint().apply { color = AColor.rgb(0x8A, 0x8A, 0x8A); textSize = 9.5f; textAlign = Paint.Align.RIGHT }
+    val watermarkPaint = Paint().apply { color = AColor.argb(14, 0, 0, 0); textSize = 40f; isFakeBoldText = true; textAlign = Paint.Align.CENTER }
+
+    fun blockNeeds(q: PremiumQuestion): List<Float> {
+        val needs = mutableListOf<Float>()
+        val qLines = wrapPremiumText("${q.number}. ${q.question}", qPaint, contentWidth)
+        needs.add(qLines.size * lineHeight + 10f)
+        q.options.forEachIndexed { oi, opt ->
+            val letter = premiumOptionLetter(opt, oi)
+            val text = premiumOptionText(opt)
+            val optLines = wrapPremiumText("$letter) $text", optPaint, contentWidth - 20f)
+            needs.add(optLines.size * lineHeight + 16f + 4f)
+        }
+        if (q.explanation.isNotBlank()) {
+            val explLines = wrapPremiumText(q.explanation, explBodyPaint, contentWidth - 20f)
+            needs.add((explLines.size + 1) * lineHeight + 8f + 6f)
+        }
+        return needs
     }
-    val circlePaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
-    val circleTextPaint = Paint().apply { color = AColor.WHITE; textSize = 11f; isFakeBoldText = true; textAlign = Paint.Align.CENTER }
-    val qPaint = Paint().apply { color = AColor.rgb(0x1A, 0x1A, 0x1A); textSize = 13f; isFakeBoldText = true }
-    val optGreenPaint = Paint().apply { color = AColor.rgb(0x1F, 0x7A, 0x3D); textSize = 12f; isFakeBoldText = true }
-    val optRedPaint = Paint().apply { color = AColor.rgb(0xC0, 0x39, 0x2B); textSize = 12f }
-    val correctAnswerPaint = Paint().apply { color = AColor.rgb(0x1F, 0x7A, 0x3D); textSize = 12.5f; isFakeBoldText = true }
-    val explBgPaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
-    val explHeaderPaint = Paint().apply { color = AColor.rgb(0xF0, 0xE6, 0xC8); textSize = 12.5f; isFakeBoldText = true }
-    val explBodyPaint = Paint().apply { color = AColor.rgb(0xF0, 0xE6, 0xC8); textSize = 11.5f }
-    val dotPaint = Paint().apply { color = AColor.rgb(0x4C, 0xAF, 0x50) }
+
+    var totalPages = 1
+    run {
+        var simY = 80f
+        questions.forEach { q ->
+            blockNeeds(q).forEach { need ->
+                if (simY + need > 810f) { totalPages++; simY = 46f }
+                simY += need
+            }
+            simY += 12f
+        }
+    }
 
     var pageNumber = 1
     var page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
     var canvas = page.canvas
 
-    fun drawHeader() {
-        canvas.drawRect(0f, 0f, pageWidth.toFloat(), 64f, bandPaint)
-        canvas.drawRect(0f, 60f, pageWidth.toFloat(), 64f, goldPaint)
-        canvas.drawText(title, leftMargin, 32f, titlePaint)
-        canvas.drawText("Shree English Classes — Premium", leftMargin, 50f, subtitlePaint)
-    }
-    fun drawPageBorder() {
-        canvas.drawRect(4f, 4f, pageWidth - 4f, pageHeight - 4f, borderPaint)
-    }
-
-    drawHeader()
-    var y = 64f
-    val marginBottom = 790f
-    val textStartX = leftMargin + 34f
-    val textWidth = contentWidth - 34f
-    val explInnerPad = 10f
-    val explTextWidth = contentWidth - (explInnerPad * 2f)
-
-    questions.forEachIndexed { index, q ->
-        val qLines = wrapPremiumText("${q.number}. ${q.question}", qPaint, textWidth)
-        val optLinesList = q.options.mapIndexed { idx, opt ->
-            val letter = premiumOptionLetter(opt, idx)
-            val isCorrect = letter == q.correctAnswer.trim()
-            val prefix = if (isCorrect) "✓ " else "✗ "
-            wrapPremiumText("$prefix$letter) ${premiumOptionText(opt)}", if (isCorrect) optGreenPaint else optRedPaint, textWidth - 10f)
+    fun drawWatermark(cv: Canvas) {
+        cv.save()
+        cv.rotate(-28f, pageWidth / 2f, pageHeight / 2f)
+        for (row in -2..4) {
+            cv.drawText("Shree English Classes", pageWidth / 2f, pageHeight / 2f + row * 140f, watermarkPaint)
         }
-        val explLines = if (q.explanation.isNotEmpty()) wrapPremiumText(q.explanation, explBodyPaint, explTextWidth) else emptyList()
+        cv.restore()
+    }
+    fun drawFooter(cv: Canvas) {
+        cv.drawText("Page $pageNumber of $totalPages", pageWidth - margin, pageHeight - 20f, footerRightPaint)
+    }
+    fun drawHeader(showSubtitle: Boolean) {
+        canvas.drawRect(0f, 0f, pageWidth.toFloat(), if (showSubtitle) 58f else 34f, bandPaint)
+        canvas.drawText(title, pageWidth / 2f, 26f, titlePaint)
+        if (showSubtitle) canvas.drawText("Shree English Classes • Green = Correct Answer", pageWidth / 2f, 46f, subtitlePaint)
+    }
+    drawWatermark(canvas)
+    drawHeader(true)
+    var y = 80f
 
-        var blockHeight = 20f + (qLines.size * 16f)
-        optLinesList.forEach { blockHeight += it.size * 15f }
-        if (q.correctAnswer.isNotEmpty()) blockHeight += 20f
-        if (explLines.isNotEmpty()) blockHeight += 8f + 18f + (explLines.size * 14f) + 12f
-        blockHeight += 12f
-
-        if (y + blockHeight > marginBottom) {
-            drawPageBorder()
+    fun ensureSpace(needed: Float) {
+        if (y + needed > 810f) {
+            drawFooter(canvas)
             document.finishPage(page)
             pageNumber++
             page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
             canvas = page.canvas
-            y = 24f
+            drawWatermark(canvas)
+            drawHeader(false)
+            y = 46f
         }
-
-        val cardTop = y
-        val bandPaintToUse = if (index % 2 == 0) cardBgEven else cardBgOdd
-        canvas.drawRect(0f, cardTop, pageWidth.toFloat(), cardTop + blockHeight, bandPaintToUse)
-
-        val circleCy = cardTop + 22f
-        canvas.drawCircle(leftMargin + 11f, circleCy, 11f, circlePaint)
-        canvas.drawText(q.number, leftMargin + 11f, circleCy + 4f, circleTextPaint)
-
-        var lineY = cardTop + 20f
-        qLines.forEachIndexed { idx, line ->
-            drawPremiumJustified(canvas, line, textStartX, lineY, textWidth, qPaint, idx == qLines.size - 1)
-            lineY += 16f
-        }
-        lineY += 4f
-
-        val correctLetter = q.correctAnswer.trim()
-        q.options.forEachIndexed { idx, opt ->
-            val letter = premiumOptionLetter(opt, idx)
-            val isCorrect = letter == correctLetter
-            val paintToUse = if (isCorrect) optGreenPaint else optRedPaint
-            val optLines = optLinesList[idx]
-            optLines.forEachIndexed { li, line ->
-                drawPremiumJustified(canvas, line, textStartX + 10f, lineY, textWidth - 10f, paintToUse, li == optLines.size - 1)
-                lineY += 15f
-            }
-        }
-
-        if (q.correctAnswer.isNotEmpty()) {
-            lineY += 4f
-            canvas.drawText("Correct Answer: ${q.correctAnswer}", textStartX, lineY, correctAnswerPaint)
-            lineY += 16f
-        }
-
-        if (explLines.isNotEmpty()) {
-            lineY += 4f
-            val boxTop = lineY
-            val boxHeight = 18f + (explLines.size * 14f) + 10f
-            canvas.drawRect(leftMargin, boxTop, pageWidth - rightMargin, boxTop + boxHeight, explBgPaint)
-            canvas.drawCircle(leftMargin + explInnerPad + 3f, boxTop + 15f, 3f, dotPaint)
-            canvas.drawText("Explanation:", leftMargin + explInnerPad + 12f, boxTop + 18f, explHeaderPaint)
-            var ey = boxTop + 34f
-            explLines.forEachIndexed { idx, line ->
-                drawPremiumJustified(canvas, line, leftMargin + explInnerPad, ey, explTextWidth, explBodyPaint, idx == explLines.size - 1)
-                ey += 14f
-            }
-        }
-
-        canvas.drawLine(0f, cardTop + blockHeight, pageWidth.toFloat(), cardTop + blockHeight, dividerPaint)
-        y = cardTop + blockHeight
     }
-    drawPageBorder()
+
+    questions.forEach { q ->
+        val qLines = wrapPremiumText("${q.number}. ${q.question}", qPaint, contentWidth)
+        val qNeed = qLines.size * lineHeight + 10f
+        ensureSpace(qNeed)
+        qLines.forEachIndexed { i, line -> canvas.drawText(line, margin, y + (i * lineHeight), qPaint) }
+        y += qNeed
+
+        q.options.forEachIndexed { oi, opt ->
+            val letter = premiumOptionLetter(opt, oi)
+            val text = premiumOptionText(opt)
+            val isCorrect = letter == q.correctAnswer.trim()
+            val optLines = wrapPremiumText("$letter) $text", optPaint, contentWidth - 20f)
+            val boxHeight = optLines.size * lineHeight + 16f
+            val optNeed = boxHeight + 4f
+            ensureSpace(optNeed)
+            val boxTop = y - 14f
+            val boxPaint = if (isCorrect) correctBoxPaint else normalBoxPaint
+            val borderPaint = if (isCorrect) correctBorderPaint else normalBorderPaint
+            val boxRect = RectF(margin + 14f, boxTop, pageWidth - margin, boxTop + boxHeight)
+            canvas.drawRoundRect(boxRect, 6f, 6f, boxPaint)
+            canvas.drawRoundRect(boxRect, 6f, 6f, borderPaint)
+            val txtPaint = if (isCorrect) correctPaint else optPaint
+            optLines.forEachIndexed { i, line -> canvas.drawText(line, margin + 22f, y + (i * lineHeight), txtPaint) }
+            y += optNeed
+        }
+
+        if (q.explanation.isNotBlank()) {
+            val explLines = wrapPremiumText(q.explanation, explBodyPaint, contentWidth - 20f)
+            val boxHeight = (explLines.size + 1) * lineHeight + 8f
+            val explNeed = boxHeight + 6f
+            ensureSpace(explNeed)
+            canvas.drawRoundRect(RectF(margin + 14f, y - 10f, pageWidth - margin, y - 10f + boxHeight), 6f, 6f, explBoxPaint)
+            canvas.drawText("SOLID FACT / EXPLANATION", margin + 22f, y, explLabelPaint)
+            explLines.forEachIndexed { i, line -> canvas.drawText(line, margin + 22f, y + lineHeight + (i * lineHeight), explBodyPaint) }
+            y += explNeed
+        }
+        y += 12f
+    }
+    drawFooter(canvas)
     document.finishPage(page)
     return document
 }
