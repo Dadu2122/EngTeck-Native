@@ -404,7 +404,8 @@ private data class PsmQuestion(val number: String, val question: String, val opt
 private fun psmParseQuestions(raw: String): List<PsmQuestion> {
     if (raw.isBlank()) return emptyList()
     val parts = raw.split(Regex("\n(?=\\s*Q?\\d+[.)]\\s)", RegexOption.IGNORE_CASE))
-    return parts.map { it.trim() }.filter { it.isNotEmpty() }.mapIndexed { i, block ->
+    data class Draft(val question: String, val options: List<String>, val correctAnswer: String, val explanation: String)
+    val drafts = parts.map { it.trim() }.filter { it.isNotEmpty() }.mapNotNull { block ->
         val lines = block.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
         val question = (lines.getOrNull(0) ?: "").replace(Regex("^Q?\\d+[.)]\\s*", RegexOption.IGNORE_CASE), "")
         var correctAnswer = ""
@@ -412,7 +413,7 @@ private fun psmParseQuestions(raw: String): List<PsmQuestion> {
         val cleanOptions = mutableListOf<String>()
         lines.drop(1).forEach { line ->
             val m = Regex("^\\s*(?:ans(?:wer)?|correct\\s*answer)\\s*[:\\-]\\s*([A-D])", RegexOption.IGNORE_CASE).find(line)
-            val em = Regex("^Explanation:\\s*(.*)$", RegexOption.IGNORE_CASE).find(line)
+            val em = Regex("^Explanation:?\\s*(.*)$", RegexOption.IGNORE_CASE).find(line)
             if (m != null) {
                 correctAnswer = m.groupValues[1].uppercase()
             } else if (em != null) {
@@ -421,14 +422,19 @@ private fun psmParseQuestions(raw: String): List<PsmQuestion> {
                 cleanOptions.add(line)
             }
         }
-        PsmQuestion((i + 1).toString(), question, cleanOptions, correctAnswer, explanation)
+        // Drop header/title lines (e.g. "1. TOPIC NAME — 50 MCQs") that get
+        // mistaken for a question by the numbering split — a real MCQ always
+        // has at least 2 options.
+        if (cleanOptions.size < 2) null else Draft(question, cleanOptions, correctAnswer, explanation)
     }
+    return drafts.mapIndexed { i, d -> PsmQuestion((i + 1).toString(), d.question, d.options, d.correctAnswer, d.explanation) }
 }
+private fun psmStripMark(opt: String): String = opt.replace(Regex("^[✗✓✔❌×]\\s*"), "").trim()
 private fun psmOptionLetter(opt: String, idx: Int): String {
-    val m = Regex("^\\(?([A-Da-d])[.)]").find(opt)
+    val m = Regex("^\\(?([A-Da-d])[.)]").find(psmStripMark(opt))
     return if (m != null) m.groupValues[1].uppercase() else ('A' + idx).toString()
 }
-private fun psmOptionText(opt: String): String = opt.replace(Regex("^\\(?[A-Da-d][.)]\\s*"), "")
+private fun psmOptionText(opt: String): String = psmStripMark(opt).replace(Regex("^\\(?[A-Da-d][.)]\\s*"), "")
 
 private data class PsmSectionDef(val key: String, val label: String)
 private val PSM_HISTORY_KEY = "historyOfEnglishLiterature"
