@@ -6,12 +6,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
@@ -24,17 +27,20 @@ import com.google.firebase.database.FirebaseDatabase
 // Data model + parsing
 // ============================================================================
 data class Flashcard(val number: String, val word: String, val partOfSpeech: String, val meaning: String, val example: String)
+data class FlashcardDeck(val key: String, val label: String, val count: Int)
 
-// Expected raw text format (one entry per numbered block — same numbering style
-// as the rest of the app's Firebase content, so it's familiar to type):
+private val DECK_LABELS = mapOf(
+    "vocabulary" to "Vocabulary",
+    "idioms" to "Idioms & Phrases",
+    "literaryTerms" to "Literary Terms",
+    "grammarRules" to "Grammar Rules"
+)
+
+// Expected raw text format (one entry per numbered block):
 //
 // 1. Ubiquitous (adjective)
 // Meaning: Present everywhere at the same time.
 // Example: Smartphones have become ubiquitous in modern life.
-//
-// 2. Ephemeral (adjective)
-// Meaning: Lasting for a very short time.
-// Example: The beauty of cherry blossoms is ephemeral.
 private fun parseFlashcards(raw: String): List<Flashcard> {
     if (raw.isBlank()) return emptyList()
     val parts = raw.split(Regex("\n(?=\\s*\\d+[.)]\\s)"))
@@ -59,48 +65,102 @@ private fun parseFlashcards(raw: String): List<Flashcard> {
 }
 
 // ============================================================================
-// Home-screen teaser card — "Read, Repeat, Remember"
-// Free & open: no login/premium check, anyone tapping Home sees this.
+// Home-screen section — heading + horizontal swipeable deck cards.
+// Free & open: no login/premium check, reads a public Firebase path.
 // ============================================================================
 @Composable
-fun FlashcardsCard(onOpen: () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp)) {
+fun FlashcardsCard(onOpenDeck: (deckKey: String, deckLabel: String) -> Unit, onManageContent: () -> Unit) {
+    var decks by remember { mutableStateOf<List<FlashcardDeck>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        FirebaseDatabase.getInstance().getReference("flashcardsPublic")
+            .get().addOnSuccessListener { snapshot ->
+                decks = DECK_LABELS.keys.mapNotNull { key ->
+                    val raw = snapshot.child(key).child("raw").getValue(String::class.java) ?: ""
+                    val count = parseFlashcards(raw).size
+                    if (count > 0) FlashcardDeck(key, DECK_LABELS[key] ?: key, count) else null
+                }
+            }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        // Glossy flat rectangular heading card
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF12203D), RoundedCornerShape(20.dp))
-                .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(20.dp))
-                .clickable(onClick = onOpen)
-                .padding(20.dp)
+                .padding(horizontal = 22.dp)
+                .background(
+                    Brush.verticalGradient(listOf(Color(0xFF17284A), Color(0xFF0E1930))),
+                    RoundedCornerShape(18.dp)
+                )
+                .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(18.dp))
+                .padding(horizontal = 20.dp, vertical = 18.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("🃏", fontSize = 26.sp)
-                Spacer(Modifier.width(10.dp))
-                Column {
-                    Text(
-                        "Read, Repeat, Remember",
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        "Free Vocabulary Flashcards • No login needed",
-                        color = Color(0xFFF0D384),
-                        fontSize = 12.sp
-                    )
+            Text(
+                "Grow with Flashcards",
+                color = Color.White,
+                fontSize = 21.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Read, Repeat, Remember",
+                color = Color(0xFFF0D384),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+
+        Spacer(Modifier.height(6.dp))
+        Row(modifier = Modifier.padding(horizontal = 22.dp)) {
+            Text(
+                "＋ Manage Content",
+                color = Color(0xFF8A8E9E),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.clickable { onManageContent() }
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        if (decks.isEmpty()) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 22.dp)) {
+                Text("Flashcard decks coming soon.", color = Color(0xFF8A8E9E), fontSize = 12.sp)
+            }
+        } else {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(start = 22.dp, end = 44.dp)
+            ) {
+                items(decks) { deck ->
+                    FlashcardDeckCard(deck, onClick = { onOpenDeck(deck.key, deck.label) })
                 }
             }
-            Spacer(Modifier.height(14.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFFD4A017), RoundedCornerShape(100.dp))
-                    .padding(vertical = 12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("▶ Start Flashcards", color = Color(0xFF12203D), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            }
+        }
+    }
+}
+
+@Composable
+private fun FlashcardDeckCard(deck: FlashcardDeck, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(220.dp)
+            .height(150.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                Brush.verticalGradient(listOf(Color(0xFF12203D), Color(0xFF1B2E52)))
+            )
+            .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(18.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text("🃏", fontSize = 26.sp)
+        Column {
+            Text(deck.label, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text("${deck.count} cards", color = Color(0xFFF0D384), fontSize = 12.sp)
         }
     }
 }
@@ -109,7 +169,7 @@ fun FlashcardsCard(onOpen: () -> Unit) {
 // Full flashcard screen — tap to flip, Known / Review Again
 // ============================================================================
 @Composable
-fun FlashcardScreen(onBack: () -> Unit) {
+fun FlashcardScreen(deckKey: String, deckLabel: String, onBack: () -> Unit) {
     var loading by remember { mutableStateOf(true) }
     var cards by remember { mutableStateOf<List<Flashcard>>(emptyList()) }
     var idx by remember { mutableStateOf(0) }
@@ -118,9 +178,8 @@ fun FlashcardScreen(onBack: () -> Unit) {
     var reviewCount by remember { mutableStateOf(0) }
     var finished by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        // Public path — no auth/premium gate, readable by anyone.
-        FirebaseDatabase.getInstance().getReference("flashcardsPublic").child("raw")
+    LaunchedEffect(deckKey) {
+        FirebaseDatabase.getInstance().getReference("flashcardsPublic").child(deckKey).child("raw")
             .get().addOnSuccessListener {
                 loading = false
                 cards = parseFlashcards(it.getValue(String::class.java) ?: "")
@@ -144,7 +203,6 @@ fun FlashcardScreen(onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().background(Color(0xFFFAF8F3))) {
-        // Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -154,7 +212,7 @@ fun FlashcardScreen(onBack: () -> Unit) {
         ) {
             TextButton(onClick = onBack) { Text("‹ Back", color = Color.White) }
             Spacer(Modifier.width(4.dp))
-            Text("Read, Repeat, Remember", color = Color(0xFFD4A017), fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text(deckLabel, color = Color(0xFFD4A017), fontSize = 17.sp, fontWeight = FontWeight.Bold)
         }
 
         when {
@@ -176,7 +234,6 @@ fun FlashcardScreen(onBack: () -> Unit) {
             else -> {
                 val card = cards[idx]
                 Column(Modifier.fillMaxSize().padding(20.dp)) {
-                    // Progress bar
                     val progress = (idx + 1f) / cards.size
                     Box(
                         Modifier.fillMaxWidth().height(6.dp)
@@ -189,13 +246,12 @@ fun FlashcardScreen(onBack: () -> Unit) {
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Vocabulary", color = Color(0xFF8A8E9E), fontSize = 12.sp)
+                        Text(deckLabel, color = Color(0xFF8A8E9E), fontSize = 12.sp)
                         Text("${idx + 1} / ${cards.size}", color = Color(0xFF8A8E9E), fontSize = 12.sp)
                     }
 
                     Spacer(Modifier.weight(1f))
 
-                    // The card itself — tap to flip
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -212,7 +268,6 @@ fun FlashcardScreen(onBack: () -> Unit) {
                         contentAlignment = Alignment.Center
                     ) {
                         if (rotation <= 90f) {
-                            // FRONT
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("TAP TO REVEAL MEANING", color = Color(0xFFD4A017), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.height(24.dp))
@@ -223,8 +278,6 @@ fun FlashcardScreen(onBack: () -> Unit) {
                                 }
                             }
                         } else {
-                            // BACK — content is mirrored since the container itself is
-                            // rotated 180°, so flip it back to read normally.
                             Column(
                                 modifier = Modifier
                                     .padding(horizontal = 24.dp)
@@ -261,7 +314,6 @@ fun FlashcardScreen(onBack: () -> Unit) {
 
                     Spacer(Modifier.weight(1f))
 
-                    // Known / Review Again — only usable after the meaning is revealed
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                         Box(
                             modifier = Modifier
