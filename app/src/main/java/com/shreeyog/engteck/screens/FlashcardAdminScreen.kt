@@ -30,6 +30,18 @@ private val FIXED_DECKS = listOf(
     AdminDeckOption("grammarRules", "Grammar Rules")
 )
 
+// Builds the raw stored text from a list of cards, renumbered in order.
+private fun buildRawFromCards(cards: List<Flashcard>): String {
+    return cards.mapIndexed { i, c ->
+        val header = if (c.partOfSpeech.isNotBlank()) "${i + 1}. ${c.word} (${c.partOfSpeech})" else "${i + 1}. ${c.word}"
+        buildString {
+            append(header)
+            append("\nMeaning: ").append(c.meaning)
+            if (c.example.isNotBlank()) append("\nExample: ").append(c.example)
+        }
+    }.joinToString("\n\n")
+}
+
 @Composable
 fun FlashcardAdminScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -37,9 +49,10 @@ fun FlashcardAdminScreen(onBack: () -> Unit) {
     var useCustomDeck by remember { mutableStateOf(false) }
     var customDeckKey by remember { mutableStateOf("") }
     var rawText by remember { mutableStateOf("") }
-    var existingRaw by remember { mutableStateOf("") }
+    var existingCards by remember { mutableStateOf<List<Flashcard>>(emptyList()) }
     var loadingExisting by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
+    var editingIndex by remember { mutableStateOf(-1) }
 
     val activeDeckKey = if (useCustomDeck) customDeckKey.trim() else selectedDeckKey
 
@@ -49,29 +62,33 @@ fun FlashcardAdminScreen(onBack: () -> Unit) {
         FirebaseDatabase.getInstance().getReference("flashcardsPublic").child(activeDeckKey).child("raw")
             .get().addOnSuccessListener {
                 loadingExisting = false
-                existingRaw = it.getValue(String::class.java) ?: ""
+                existingCards = parseFlashcards(it.getValue(String::class.java) ?: "")
             }.addOnFailureListener { loadingExisting = false }
     }
 
-    LaunchedEffect(activeDeckKey) { loadExisting() }
+    LaunchedEffect(activeDeckKey) { editingIndex = -1; loadExisting() }
 
-    // Live preview count using the same parser the real screen uses
+    fun saveCards(newList: List<Flashcard>, successMsg: String) {
+        saving = true
+        val finalText = buildRawFromCards(newList)
+        FirebaseDatabase.getInstance().getReference("flashcardsPublic").child(activeDeckKey).child("raw")
+            .setValue(finalText)
+            .addOnSuccessListener {
+                saving = false
+                Toast.makeText(context, successMsg, Toast.LENGTH_SHORT).show()
+                loadExisting()
+            }
+            .addOnFailureListener {
+                saving = false
+                Toast.makeText(context, "Failed, try again", Toast.LENGTH_LONG).show()
+            }
+    }
+
     val previewCount = remember(rawText) {
         rawText.split(Regex("\n(?=\\s*\\d+[.)]\\s)")).count { it.isNotBlank() && it.contains("Meaning:", ignoreCase = true) }
     }
-    val existingCount = remember(existingRaw) {
-        if (existingRaw.isBlank()) 0
-        else existingRaw.split(Regex("\n(?=\\s*\\d+[.)]\\s)")).count { it.isNotBlank() && it.contains("Meaning:", ignoreCase = true) }
-    }
 
-    fun renumber(text: String): String {
-        val blocks = text.split(Regex("\n(?=\\s*\\d+[.)]\\s)")).map { it.trim() }.filter { it.isNotEmpty() }
-        return blocks.mapIndexed { i, block ->
-            block.replaceFirst(Regex("^\\d+[.)]\\s*"), "${i + 1}. ")
-        }.joinToString("\n\n")
-    }
-
-    fun upload(append: Boolean) {
+    fun uploadNew(append: Boolean) {
         if (activeDeckKey.isBlank()) {
             Toast.makeText(context, "Deck ka naam/category chuno pehle", Toast.LENGTH_SHORT).show()
             return
@@ -80,24 +97,10 @@ fun FlashcardAdminScreen(onBack: () -> Unit) {
             Toast.makeText(context, "Kuch to likho pehle", Toast.LENGTH_SHORT).show()
             return
         }
-        saving = true
-        val finalText = if (append && existingRaw.isNotBlank()) {
-            renumber(existingRaw.trim() + "\n\n" + rawText.trim())
-        } else {
-            renumber(rawText.trim())
-        }
-        FirebaseDatabase.getInstance().getReference("flashcardsPublic").child(activeDeckKey).child("raw")
-            .setValue(finalText)
-            .addOnSuccessListener {
-                saving = false
-                Toast.makeText(context, "Upload ho gaya ✓", Toast.LENGTH_LONG).show()
-                rawText = ""
-                loadExisting()
-            }
-            .addOnFailureListener {
-                saving = false
-                Toast.makeText(context, "Upload fail hua, dobara try karo", Toast.LENGTH_LONG).show()
-            }
+        val newCards = parseFlashcards(rawText)
+        val finalList = if (append) existingCards + newCards else newCards
+        saveCards(finalList, "Upload ho gaya ✓")
+        rawText = ""
     }
 
     Column(Modifier.fillMaxSize().background(Color(0xFFFAF8F3))) {
@@ -134,16 +137,14 @@ fun FlashcardAdminScreen(onBack: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .background(if (useCustomDeck) Color(0xFF12203D) else Color.White, RoundedCornerShape(100.dp))
-                        .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(100.dp))
-                        .clickable { useCustomDeck = true }
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                ) {
-                    Text("+ Custom", color = if (useCustomDeck) Color.White else Color(0xFF1A1A1A), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
+            Box(
+                modifier = Modifier
+                    .background(if (useCustomDeck) Color(0xFF12203D) else Color.White, RoundedCornerShape(100.dp))
+                    .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(100.dp))
+                    .clickable { useCustomDeck = true }
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                Text("+ Custom", color = if (useCustomDeck) Color.White else Color(0xFF1A1A1A), fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
             if (useCustomDeck) {
                 Spacer(Modifier.height(10.dp))
@@ -158,7 +159,7 @@ fun FlashcardAdminScreen(onBack: () -> Unit) {
             }
 
             Spacer(Modifier.height(22.dp))
-            Text("2. Paste flashcards", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
+            Text("2. Paste new flashcards", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
             Spacer(Modifier.height(6.dp))
             Text(
                 "Format: number, word (part of speech), Meaning: ..., Example: ... — one blank line between cards.",
@@ -174,24 +175,21 @@ fun FlashcardAdminScreen(onBack: () -> Unit) {
                         fontSize = 12.sp
                     )
                 },
-                modifier = Modifier.fillMaxWidth().height(220.dp)
+                modifier = Modifier.fillMaxWidth().height(200.dp)
             )
             Spacer(Modifier.height(6.dp))
             Text(
                 "Detected in this box: $previewCount card${if (previewCount == 1) "" else "s"}" +
-                    if (activeDeckKey.isNotBlank()) "  •  Already saved in \"$activeDeckKey\": ${if (loadingExisting) "…" else "$existingCount"}" else "",
+                    if (activeDeckKey.isNotBlank()) "  •  Already saved in \"$activeDeckKey\": ${if (loadingExisting) "…" else "${existingCards.size}"}" else "",
                 fontSize = 11.5.sp, color = Color(0xFF5B5F6B)
             )
 
-            Spacer(Modifier.height(20.dp))
-            Text("3. Upload", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
-            Spacer(Modifier.height(10.dp))
-
+            Spacer(Modifier.height(16.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0xFF1F7A3D), RoundedCornerShape(14.dp))
-                    .clickable(enabled = !saving) { upload(append = true) }
+                    .clickable(enabled = !saving) { uploadNew(append = true) }
                     .padding(vertical = 14.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -206,18 +204,142 @@ fun FlashcardAdminScreen(onBack: () -> Unit) {
                     .fillMaxWidth()
                     .background(Color.White, RoundedCornerShape(14.dp))
                     .border(1.5.dp, Color(0xFFC0392B), RoundedCornerShape(14.dp))
-                    .clickable(enabled = !saving) { upload(append = false) }
+                    .clickable(enabled = !saving) { uploadNew(append = false) }
                     .padding(vertical = 14.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text("⚠ Replace Whole Deck", color = Color(0xFFC0392B), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("⚠ Replace Whole Deck With This", color = Color(0xFFC0392B), fontWeight = FontWeight.Bold, fontSize = 14.sp)
             }
-            Spacer(Modifier.height(6.dp))
+
+            Spacer(Modifier.height(30.dp))
             Text(
-                "\"Add to Existing\" keeps old cards and appends new ones. \"Replace\" deletes everything already saved in this deck first.",
-                fontSize = 11.sp, color = Color(0xFF8A8E9E)
+                "3. Existing cards in \"$activeDeckKey\" (${existingCards.size})",
+                fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A)
             )
+            Spacer(Modifier.height(10.dp))
+
+            if (loadingExisting) {
+                Text("Loading…", fontSize = 12.sp, color = Color(0xFF8A8E9E))
+            } else if (existingCards.isEmpty()) {
+                Text("Is deck mein abhi koi card nahi hai.", fontSize = 12.sp, color = Color(0xFF8A8E9E))
+            } else {
+                existingCards.forEachIndexed { index, card ->
+                    ExistingCardRow(
+                        card = card,
+                        isEditing = editingIndex == index,
+                        onEditToggle = { editingIndex = if (editingIndex == index) -1 else index },
+                        onSave = { updated ->
+                            val newList = existingCards.toMutableList().also { it[index] = updated }
+                            saveCards(newList, "Card updated ✓")
+                            editingIndex = -1
+                        },
+                        onDelete = {
+                            val newList = existingCards.toMutableList().also { it.removeAt(index) }
+                            saveCards(newList, "Card deleted ✓")
+                            editingIndex = -1
+                        }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                }
+            }
             Spacer(Modifier.height(40.dp))
+        }
+    }
+}
+
+@Composable
+private fun ExistingCardRow(
+    card: Flashcard,
+    isEditing: Boolean,
+    onEditToggle: () -> Unit,
+    onSave: (Flashcard) -> Unit,
+    onDelete: () -> Unit
+) {
+    var word by remember(card, isEditing) { mutableStateOf(card.word) }
+    var pos by remember(card, isEditing) { mutableStateOf(card.partOfSpeech) }
+    var meaning by remember(card, isEditing) { mutableStateOf(card.meaning) }
+    var example by remember(card, isEditing) { mutableStateOf(card.example) }
+    var confirmingDelete by remember(isEditing) { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White, RoundedCornerShape(14.dp))
+            .border(1.dp, Color(0xFFE3DFD3), RoundedCornerShape(14.dp))
+            .padding(14.dp)
+    ) {
+        if (!isEditing) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        if (card.partOfSpeech.isNotBlank()) "${card.word} (${card.partOfSpeech})" else card.word,
+                        fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A)
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(card.meaning, fontSize = 12.sp, color = Color(0xFF5B5F6B), maxLines = 2)
+                }
+                Text(
+                    "✎",
+                    fontSize = 16.sp, color = Color(0xFF12203D),
+                    modifier = Modifier.clickable { confirmingDelete = false; onEditToggle() }.padding(8.dp)
+                )
+                Text(
+                    if (confirmingDelete) "Confirm?" else "🗑",
+                    fontSize = if (confirmingDelete) 12.sp else 16.sp,
+                    color = Color(0xFFC0392B),
+                    fontWeight = if (confirmingDelete) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.clickable {
+                        if (confirmingDelete) onDelete() else confirmingDelete = true
+                    }.padding(8.dp)
+                )
+            }
+        } else {
+            OutlinedTextField(
+                value = word, onValueChange = { word = it },
+                label = { Text("Word") }, singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = pos, onValueChange = { pos = it },
+                label = { Text("Part of speech (optional)") }, singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = meaning, onValueChange = { meaning = it },
+                label = { Text("Meaning") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = example, onValueChange = { example = it },
+                label = { Text("Example (optional)") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(Color(0xFF1F7A3D), RoundedCornerShape(10.dp))
+                        .clickable {
+                            if (word.isNotBlank() && meaning.isNotBlank()) {
+                                onSave(card.copy(word = word.trim(), partOfSpeech = pos.trim(), meaning = meaning.trim(), example = example.trim()))
+                            }
+                        }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text("Save", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .border(1.dp, Color(0xFF8A8E9E), RoundedCornerShape(10.dp))
+                        .clickable { onEditToggle() }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text("Cancel", color = Color(0xFF5B5F6B), fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+            }
         }
     }
 }
