@@ -62,11 +62,18 @@ fun HomeScreen(teacherName: String) {
                 0 -> {
                     var selectedBook by remember { mutableStateOf<Pair<String, String>?>(null) }
                     var showProgressAnalytics by remember { mutableStateOf(false) }
-                    var showFlashcards by remember { mutableStateOf(false) }
+                    var openFlashcardDeck by remember { mutableStateOf<Pair<String, String>?>(null) }
+                    var showFlashcardAdmin by remember { mutableStateOf(false) }
                     if (showProgressAnalytics) {
                         ProgressAnalyticsScreen(onClose = { showProgressAnalytics = false })
-                    } else if (showFlashcards) {
-                        FlashcardScreen(onBack = { showFlashcards = false })
+                    } else if (showFlashcardAdmin) {
+                        FlashcardAdminScreen(onBack = { showFlashcardAdmin = false })
+                    } else if (openFlashcardDeck != null) {
+                        FlashcardScreen(
+                            deckKey = openFlashcardDeck!!.first,
+                            deckLabel = openFlashcardDeck!!.second,
+                            onBack = { openFlashcardDeck = null }
+                        )
                     } else if (selectedBook != null) {
                         MiniBookReaderScreen(
                             bookKey = selectedBook!!.first,
@@ -82,7 +89,10 @@ fun HomeScreen(teacherName: String) {
                             Column {
                                 CoverScreen(onProgressClick = { showProgressAnalytics = true })
                                 TeacherProfileCard()
-                                FlashcardsCard(onOpen = { showFlashcards = true })
+                                FlashcardsCard(
+                                    onOpenDeck = { key, label -> openFlashcardDeck = key to label },
+                                    onManageContent = { showFlashcardAdmin = true }
+                                )
                                 DemoVideoCard()
                                 SelectedAspirantsCard()
                                 AreasCoveredCard()
