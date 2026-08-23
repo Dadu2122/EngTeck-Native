@@ -22,7 +22,8 @@ fun EngTeckNavGraph() {
     val navController: NavHostController = rememberNavController()
     val teacherName = remember { mutableStateOf("Teacher") }
 
-    NavHost(navController = navController, startDestination = Routes.SPLASH) {
+    // App now opens straight into Home — no splash, no Join Code step.
+    NavHost(navController = navController, startDestination = Routes.HOME) {
         composable(Routes.SPLASH) {
             SplashScreen(onFinished = {
                 navController.navigate(Routes.JOIN_CODE) {
