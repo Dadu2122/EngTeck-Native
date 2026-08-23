@@ -1,5 +1,6 @@
 package com.shreeyog.engteck.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,11 +19,16 @@ import com.shreeyog.engteck.ui.theme.NavyDeep
 
 data class StudySetItem(val key: String, val title: String)
 
+// Only these categories have a Daily Practice set on the backend (matches
+// admin's DP_CATS) — "grammar" doesn't, so its card is skipped there.
+private val DAILY_PRACTICE_CATS = setOf("tgt", "pgt", "lt", "gic", "upessc", "uphesc", "net")
+
 @Composable
 fun StudySetsScreen(
     catKey: String,
     catLabel: String,
-    onSetClick: (setKey: String, setTitle: String) -> Unit
+    onSetClick: (setKey: String, setTitle: String) -> Unit,
+    onDailyPracticeClick: () -> Unit = {}
 ) {
     var loading by remember { mutableStateOf(true) }
     var sets by remember { mutableStateOf<List<StudySetItem>>(emptyList()) }
@@ -48,6 +54,28 @@ fun StudySetsScreen(
         Spacer(Modifier.height(4.dp))
         Text("Select a set", fontSize = 13.sp, color = InkSoft)
         Spacer(Modifier.height(16.dp))
+
+        if (catKey in DAILY_PRACTICE_CATS) {
+            Card(
+                onClick = onDailyPracticeClick,
+                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFFFFDF6)),
+                border = BorderStroke(1.5.dp, Gold),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("🔥 Daily Practice", color = NavyDeep, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("225 fresh questions every day", color = InkSoft, fontSize = 11.sp)
+                    }
+                    Text("›", color = Gold, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
 
         if (loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -84,6 +112,9 @@ fun StudySetsScreen(
 fun StudyTabRoot() {
     var selectedCat by remember { mutableStateOf<StudyCategory?>(null) }
     var selectedSet by remember { mutableStateOf<StudySetItem?>(null) }
+    var showDailyPracticeHub by remember { mutableStateOf(false) }
+    var dpViewerPart by remember { mutableStateOf<Pair<String, String>?>(null) } // partKey, partLabel
+    var showMixedTest by remember { mutableStateOf(false) }
 
     when {
         selectedCat == null -> {
@@ -91,13 +122,42 @@ fun StudyTabRoot() {
                 selectedCat = StudyCategory(key, label)
             })
         }
+        showMixedTest -> {
+            Column(Modifier.fillMaxSize()) {
+                TextButton(onClick = { showMixedTest = false }) { Text("‹ Back") }
+                MixedTestScreen(catKey = selectedCat!!.key)
+            }
+        }
+        dpViewerPart != null -> {
+            Column(Modifier.fillMaxSize()) {
+                TextButton(onClick = { dpViewerPart = null }) { Text("‹ Back") }
+                DailyPracticeViewerScreen(
+                    catKey = selectedCat!!.key,
+                    partKey = dpViewerPart!!.first,
+                    partLabel = dpViewerPart!!.second
+                )
+            }
+        }
+        showDailyPracticeHub -> {
+            Column(Modifier.fillMaxSize()) {
+                TextButton(onClick = { showDailyPracticeHub = false }) { Text("‹ Back") }
+                DailyPracticeHubScreen(
+                    catKey = selectedCat!!.key,
+                    catLabel = selectedCat!!.label,
+                    onPartClick = { partKey, partLabel, isMixed ->
+                        if (isMixed) showMixedTest = true else dpViewerPart = partKey to partLabel
+                    }
+                )
+            }
+        }
         selectedSet == null -> {
             Column(Modifier.fillMaxSize()) {
                 TextButton(onClick = { selectedCat = null }) { Text("‹ Back") }
                 StudySetsScreen(
                     catKey = selectedCat!!.key,
                     catLabel = selectedCat!!.label,
-                    onSetClick = { key, title -> selectedSet = StudySetItem(key, title) }
+                    onSetClick = { key, title -> selectedSet = StudySetItem(key, title) },
+                    onDailyPracticeClick = { showDailyPracticeHub = true }
                 )
             }
         }
