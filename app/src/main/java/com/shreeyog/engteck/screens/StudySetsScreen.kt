@@ -19,10 +19,6 @@ import com.shreeyog.engteck.ui.theme.NavyDeep
 
 data class StudySetItem(val key: String, val title: String)
 
-// Only these categories have a Daily Practice set on the backend (matches
-// admin's DP_CATS) — "grammar" doesn't, so its card is skipped there.
-private val DAILY_PRACTICE_CATS = setOf("tgt", "pgt", "lt", "gic", "upessc", "uphesc", "net")
-
 @Composable
 fun StudySetsScreen(
     catKey: String,
@@ -55,27 +51,9 @@ fun StudySetsScreen(
         Text("Select a set", fontSize = 13.sp, color = InkSoft)
         Spacer(Modifier.height(16.dp))
 
-        if (catKey in DAILY_PRACTICE_CATS) {
-            Card(
-                onClick = onDailyPracticeClick,
-                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFFFFDF6)),
-                border = BorderStroke(1.5.dp, Gold),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("🔥 Daily Practice", color = NavyDeep, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text("225 fresh questions every day", color = InkSoft, fontSize = 11.sp)
-                    }
-                    Text("›", color = Gold, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
+        // Daily Practice card removed from here — it's premium/paid content
+        // and does not belong in the free "Select a set" list. It now lives
+        // only inside the Premium Study Material section.
 
         if (loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
