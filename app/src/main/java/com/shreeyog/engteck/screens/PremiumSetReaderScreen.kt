@@ -115,21 +115,27 @@ private fun buildPremiumPdfDocument(title: String, questions: List<PremiumQuesti
     val lineHeight = 14.5f
     val document = PdfDocument()
 
-    val titlePaint = Paint().apply { color = AColor.WHITE; textSize = 17f; isFakeBoldText = true; textAlign = Paint.Align.CENTER }
-    val subtitlePaint = Paint().apply { color = AColor.WHITE; textSize = 10.5f; textAlign = Paint.Align.CENTER }
-    val bandPaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
-    val qPaint = Paint().apply { color = AColor.rgb(0x1A, 0x1A, 0x1A); textSize = 12.5f; isFakeBoldText = true }
-    val optPaint = Paint().apply { color = AColor.rgb(0x1A, 0x1A, 0x1A); textSize = 11.5f }
-    val correctPaint = Paint().apply { color = AColor.rgb(0x1F, 0x7A, 0x3D); textSize = 11.5f; isFakeBoldText = true }
-    val correctBoxPaint = Paint().apply { color = AColor.rgb(0xEA, 0xF6, 0xE9) }
-    val correctBorderPaint = Paint().apply { color = AColor.rgb(0x2E, 0x9B, 0x53); style = Paint.Style.STROKE; strokeWidth = 2f }
-    val normalBoxPaint = Paint().apply { color = AColor.rgb(0xFA, 0xF8, 0xF3) }
-    val normalBorderPaint = Paint().apply { color = AColor.rgb(0xD9, 0xD3, 0xC4); style = Paint.Style.STROKE; strokeWidth = 1.5f }
-    val explLabelPaint = Paint().apply { color = AColor.rgb(0xD4, 0xA0, 0x17); textSize = 10f; isFakeBoldText = true }
-    val explBodyPaint = Paint().apply { color = AColor.WHITE; textSize = 11f }
-    val explBoxPaint = Paint().apply { color = AColor.rgb(0x12, 0x20, 0x3D) }
-    val footerRightPaint = Paint().apply { color = AColor.rgb(0x8A, 0x8A, 0x8A); textSize = 9.5f; textAlign = Paint.Align.RIGHT }
-    val watermarkPaint = Paint().apply { color = AColor.argb(14, 0, 0, 0); textSize = 40f; isFakeBoldText = true; textAlign = Paint.Align.CENTER }
+    // Extra breathing room between option pills, and before the explanation box
+    val optionGap = 12f
+    val preExplGap = 6f
+
+    // Blush-Maroon theme
+    val blushBgPaint = Paint().apply { color = AColor.rgb(0xFC, 0xF6, 0xF1) }
+    val titlePaint = Paint().apply { color = AColor.rgb(0x5C, 0x22, 0x2A); textSize = 17f; isFakeBoldText = true; textAlign = Paint.Align.CENTER }
+    val subtitlePaint = Paint().apply { color = AColor.rgb(0xB8, 0x7A, 0x4A); textSize = 10.5f; textAlign = Paint.Align.CENTER }
+    val rulePaint = Paint().apply { color = AColor.rgb(0xB8, 0x7A, 0x4A) }
+    val qPaint = Paint().apply { color = AColor.rgb(0x2A, 0x1E, 0x1E); textSize = 12.5f; isFakeBoldText = true }
+    val optPaint = Paint().apply { color = AColor.rgb(0x2A, 0x2A, 0x2A); textSize = 11.5f }
+    val correctPaint = Paint().apply { color = AColor.rgb(0x1F, 0x5C, 0x4A); textSize = 11.5f; isFakeBoldText = true }
+    val correctBoxPaint = Paint().apply { color = AColor.rgb(0xDD, 0xEE, 0xE8) }
+    val correctBorderPaint = Paint().apply { color = AColor.rgb(0x3E, 0x8A, 0x72); style = Paint.Style.STROKE; strokeWidth = 2f }
+    val normalBoxPaint = Paint().apply { color = AColor.WHITE }
+    val normalBorderPaint = Paint().apply { color = AColor.rgb(0xE8, 0xDC, 0xD0); style = Paint.Style.STROKE; strokeWidth = 1.5f }
+    val explLabelPaint = Paint().apply { color = AColor.rgb(0xF0, 0xC8, 0x9A); textSize = 10f; isFakeBoldText = true }
+    val explBodyPaint = Paint().apply { color = AColor.rgb(0xF5, 0xEC, 0xE6); textSize = 11f }
+    val explBoxPaint = Paint().apply { color = AColor.rgb(0x5C, 0x22, 0x2A) }
+    val footerRightPaint = Paint().apply { color = AColor.rgb(0xA8, 0x8E, 0x7E); textSize = 9.5f; textAlign = Paint.Align.RIGHT }
+    val watermarkPaint = Paint().apply { color = AColor.argb(12, 0x5C, 0x22, 0x2A); textSize = 40f; isFakeBoldText = true; textAlign = Paint.Align.CENTER }
 
     fun blockNeeds(q: PremiumQuestion): List<Float> {
         val needs = mutableListOf<Float>()
@@ -139,18 +145,18 @@ private fun buildPremiumPdfDocument(title: String, questions: List<PremiumQuesti
             val letter = premiumOptionLetter(opt, oi)
             val text = premiumOptionText(opt)
             val optLines = wrapPremiumText("$letter) $text", optPaint, contentWidth - 20f)
-            needs.add(optLines.size * lineHeight + 16f + 4f)
+            needs.add(optLines.size * lineHeight + 16f + optionGap)
         }
         if (q.explanation.isNotBlank()) {
             val explLines = wrapPremiumText(q.explanation, explBodyPaint, contentWidth - 20f)
-            needs.add((explLines.size + 1) * lineHeight + 8f + 6f)
+            needs.add((explLines.size + 1) * lineHeight + 8f + preExplGap)
         }
         return needs
     }
 
     var totalPages = 1
     run {
-        var simY = 80f
+        var simY = 92f
         questions.forEach { q ->
             blockNeeds(q).forEach { need ->
                 if (simY + need > 810f) { totalPages++; simY = 46f }
@@ -176,13 +182,14 @@ private fun buildPremiumPdfDocument(title: String, questions: List<PremiumQuesti
         cv.drawText("Page $pageNumber of $totalPages", pageWidth - margin, pageHeight - 20f, footerRightPaint)
     }
     fun drawHeader(showSubtitle: Boolean) {
-        canvas.drawRect(0f, 0f, pageWidth.toFloat(), if (showSubtitle) 58f else 34f, bandPaint)
-        canvas.drawText(title, pageWidth / 2f, 26f, titlePaint)
-        if (showSubtitle) canvas.drawText("Shree English Classes • Green = Correct Answer", pageWidth / 2f, 46f, subtitlePaint)
+        canvas.drawText(title, pageWidth / 2f, 30f, titlePaint)
+        if (showSubtitle) canvas.drawText("Shree English Classes • Green = Correct Answer", pageWidth / 2f, 50f, subtitlePaint)
+        canvas.drawRect(margin, if (showSubtitle) 62f else 30f, pageWidth - margin, if (showSubtitle) 64f else 32f, rulePaint)
     }
+    canvas.drawRect(0f, 0f, pageWidth.toFloat(), pageHeight.toFloat(), blushBgPaint)
     drawWatermark(canvas)
     drawHeader(true)
-    var y = 80f
+    var y = 92f
 
     fun ensureSpace(needed: Float) {
         if (y + needed > 810f) {
@@ -191,6 +198,7 @@ private fun buildPremiumPdfDocument(title: String, questions: List<PremiumQuesti
             pageNumber++
             page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
             canvas = page.canvas
+            canvas.drawRect(0f, 0f, pageWidth.toFloat(), pageHeight.toFloat(), blushBgPaint)
             drawWatermark(canvas)
             drawHeader(false)
             y = 46f
@@ -210,7 +218,7 @@ private fun buildPremiumPdfDocument(title: String, questions: List<PremiumQuesti
             val isCorrect = letter == q.correctAnswer.trim()
             val optLines = wrapPremiumText("$letter) $text", optPaint, contentWidth - 20f)
             val boxHeight = optLines.size * lineHeight + 16f
-            val optNeed = boxHeight + 4f
+            val optNeed = boxHeight + optionGap
             ensureSpace(optNeed)
             val boxTop = y - 14f
             val boxPaint = if (isCorrect) correctBoxPaint else normalBoxPaint
@@ -226,10 +234,10 @@ private fun buildPremiumPdfDocument(title: String, questions: List<PremiumQuesti
         if (q.explanation.isNotBlank()) {
             val explLines = wrapPremiumText(q.explanation, explBodyPaint, contentWidth - 20f)
             val boxHeight = (explLines.size + 1) * lineHeight + 8f
-            val explNeed = boxHeight + 6f
+            val explNeed = boxHeight + preExplGap
             ensureSpace(explNeed)
             canvas.drawRoundRect(RectF(margin + 14f, y - 10f, pageWidth - margin, y - 10f + boxHeight), 6f, 6f, explBoxPaint)
-            canvas.drawText("SOLID FACT / EXPLANATION", margin + 22f, y, explLabelPaint)
+            canvas.drawText("EXPLANATION", margin + 22f, y, explLabelPaint)
             explLines.forEachIndexed { i, line -> canvas.drawText(line, margin + 22f, y + lineHeight + (i * lineHeight), explBodyPaint) }
             y += explNeed
         }
