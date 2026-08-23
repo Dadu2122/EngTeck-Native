@@ -127,28 +127,41 @@ fun BoardPastedTextView(pastedText: String, modifier: Modifier = Modifier, textC
         } else {
             blocks.forEach { block ->
                 var layoutResult by remember(block.text) { mutableStateOf<TextLayoutResult?>(null) }
-                Text(
-                    text = block.text,
-                    style = TextStyle(
-                        fontSize = 15.sp,
-                        color = textColor,
-                        lineHeight = 24.sp,
-                        textAlign = if (block.isPoem) TextAlign.Start else TextAlign.Justify,
-                        lineBreak = LineBreak.Paragraph
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .pointerInput(block.text) {
-                            detectTapGestures { tapPos ->
-                                layoutResult?.let { layout ->
-                                    val charOffset = layout.getOffsetForPosition(tapPos)
-                                    val word = wordAtOffset(block.text, charOffset)
-                                    if (word.isNotBlank()) onWordTapped(word)
+                if (block.isPoem) {
+                    Text(
+                        text = block.text,
+                        style = TextStyle(fontSize = 15.sp, color = textColor, lineHeight = 24.sp, textAlign = TextAlign.Start),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pointerInput(block.text) {
+                                detectTapGestures { tapPos ->
+                                    layoutResult?.let { layout ->
+                                        val charOffset = layout.getOffsetForPosition(tapPos)
+                                        val word = wordAtOffset(block.text, charOffset)
+                                        if (word.isNotBlank()) onWordTapped(word)
+                                    }
                                 }
-                            }
-                        },
-                    onTextLayout = { layoutResult = it }
-                )
+                            },
+                        onTextLayout = { layoutResult = it }
+                    )
+                } else {
+                    JustifiedText(
+                        text = block.text,
+                        style = TextStyle(fontSize = 15.sp, color = textColor, lineHeight = 24.sp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pointerInput(block.text) {
+                                detectTapGestures { tapPos ->
+                                    layoutResult?.let { layout ->
+                                        val charOffset = layout.getOffsetForPosition(tapPos)
+                                        val word = wordAtOffset(block.text, charOffset)
+                                        if (word.isNotBlank()) onWordTapped(word)
+                                    }
+                                }
+                            },
+                        onTextLayout = { layoutResult = it }
+                    )
+                }
                 Spacer(Modifier.height(16.dp))
             }
         }
