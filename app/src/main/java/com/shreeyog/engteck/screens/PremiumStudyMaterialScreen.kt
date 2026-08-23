@@ -251,24 +251,28 @@ private fun PsmAnnotatableContent(context: android.content.Context, contentKey: 
     PsmDownloadPdfButton(title, body)
 }
 
-private data class PsmQuestion(val number: String, val question: String, val options: List<String>, val correctAnswer: String)
+private data class PsmQuestion(val number: String, val question: String, val options: List<String>, val correctAnswer: String, val explanation: String = "")
 private fun psmParseQuestions(raw: String): List<PsmQuestion> {
     if (raw.isBlank()) return emptyList()
-    val parts = raw.split(Regex("\n(?=\\s*\\d+[.)]\\s)"))
+    val parts = raw.split(Regex("\n(?=\\s*Q?\\d+[.)]\\s)", RegexOption.IGNORE_CASE))
     return parts.map { it.trim() }.filter { it.isNotEmpty() }.mapIndexed { i, block ->
         val lines = block.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-        val question = (lines.getOrNull(0) ?: "").replace(Regex("^\\d+[.)]\\s*"), "")
+        val question = (lines.getOrNull(0) ?: "").replace(Regex("^Q?\\d+[.)]\\s*", RegexOption.IGNORE_CASE), "")
         var correctAnswer = ""
+        var explanation = ""
         val cleanOptions = mutableListOf<String>()
         lines.drop(1).forEach { line ->
-            val m = Regex("^Correct Answer:\\s*([A-D])", RegexOption.IGNORE_CASE).find(line)
+            val m = Regex("^\\s*(?:ans(?:wer)?|correct\\s*answer)\\s*[:\\-]\\s*([A-D])", RegexOption.IGNORE_CASE).find(line)
+            val em = Regex("^Explanation:\\s*(.*)$", RegexOption.IGNORE_CASE).find(line)
             if (m != null) {
                 correctAnswer = m.groupValues[1].uppercase()
-            } else if (!line.startsWith("Explanation:", ignoreCase = true)) {
+            } else if (em != null) {
+                explanation = em.groupValues[1]
+            } else {
                 cleanOptions.add(line)
             }
         }
-        PsmQuestion((i + 1).toString(), question, cleanOptions, correctAnswer)
+        PsmQuestion((i + 1).toString(), question, cleanOptions, correctAnswer, explanation)
     }
 }
 private fun psmOptionLetter(opt: String, idx: Int): String {
@@ -365,7 +369,10 @@ fun PremiumStudyMaterialScreen(catKey: String, catLabel: String, mobile: String,
                 view = PsmView.TopicPointDetail(v.sectionKey, pointKey, title, content)
             }
             is PsmView.TopicPointDetail -> PsmTopicPointDetailView(catKey, v.sectionKey, v.pointKey, v.title, v.content)
-            is PsmView.DailyPracticeQuiz -> PsmMcqPracticeView(catKey, "dailyPractice", v.partKey, v.label)
+            is PsmView.DailyPracticeQuiz -> {
+                if (v.partKey == "mixedRaw") PsmMixedTestView(catKey, v.partKey)
+                else PsmDailySetViewerScreen(catKey, "dailyPractice", v.partKey, v.label)
+            }
             is PsmView.SelfAssessment -> PsmSelfAssessmentView(catKey, mobile)
         }
     }
@@ -967,6 +974,452 @@ private fun PsmInlineMcqList(questions: List<PsmQuestion>, modifier: Modifier = 
 }
 
 private const val SA_TIME_PER_Q = 30
+
+// ---------- Daily Practice: Theory / Literature set viewer — matches the
+// website's "With Answer / Without Answer" viewer with PDF download and
+// Answer Key, applied to the 50-question Theory & Literature sets. ----------
+
+@Composable
+private fun PsmDailySetViewerScreen(catKey: String, firebaseRoot: String, partKey: String, label: String) {
+    val context = LocalContext.current
+    var loading by remember { mutableStateOf(true) }
+    var questions by remember { mutableStateOf<List<PsmQuestion>>(emptyList()) }
+    var dateStr by remember { mutableStateOf("") }
+    var quizMode by remember { mutableStateOf(false) } // false = With Answer, true = Without Answer
+    var showAnswerKey by remember { mutableStateOf(false) }
+    var revealed by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var pickedLetters by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
+
+    LaunchedEffect(catKey, partKey) {
+        val db = FirebaseDatabase.getInstance().getReference(firebaseRoot).child(catKey)
+        db.child(partKey).get().addOnSuccessListener {
+            loading = false
+            questions = psmParseQuestions(it.getValue(String::class.java) ?: "")
+        }.addOnFailureListener { loading = false }
+        db.child("date").get().addOnSuccessListener { dateStr = it.getValue(String::class.java) ?: "" }
+    }
+
+    Column(Modifier.fillMaxSize().background(Color(0xFFFAF8F3)).verticalScroll(rememberScrollState()).padding(20.dp)) {
+        Text(label, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A))
+        if (dateStr.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            Text("Today's Test — $dateStr", fontSize = 13.sp, color = Color(0xFF5B5F6B))
+        }
+        Spacer(Modifier.height(14.dp))
+
+        if (loading) {
+            CircularProgressIndicator(color = PSM_NAVY)
+        } else if (questions.isEmpty()) {
+            Text("Coming soon.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(100.dp))
+                        .background(if (!quizMode) PSM_GOLD else Color(0xFFF5F3EC))
+                        .clickable { quizMode = false }.padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text("✅ With Answer", color = if (!quizMode) PSM_NAVY else Color(0xFF5B5F6B), fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                Box(
+                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(100.dp))
+                        .background(if (quizMode) PSM_GOLD else Color(0xFFF5F3EC))
+                        .clickable { quizMode = true }.padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text("🎯 Without Answer", color = if (quizMode) PSM_NAVY else Color(0xFF5B5F6B), fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+            }
+            Spacer(Modifier.height(10.dp))
+
+            val bodyForPdf = remember(questions) {
+                questions.joinToString("\n\n") { q ->
+                    val opts = q.options.joinToString("\n")
+                    "${q.number}. ${q.question}\n$opts" + if (q.correctAnswer.isNotBlank()) "\nCorrect Answer: ${q.correctAnswer}" else ""
+                }
+            }
+            PsmDownloadPdfButton(label, bodyForPdf)
+            Spacer(Modifier.height(10.dp))
+
+            val answerKey = questions.mapNotNull { q -> if (q.correctAnswer.isNotBlank()) q.number to q.correctAnswer else null }
+            if (answerKey.isNotEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().background(PSM_GREEN, RoundedCornerShape(12.dp))
+                        .clickable { showAnswerKey = !showAnswerKey }.padding(vertical = 13.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text(if (showAnswerKey) "▲ Hide Answer Key" else "✅ Show Answer Key", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                if (showAnswerKey) {
+                    Spacer(Modifier.height(10.dp))
+                    Column {
+                        answerKey.chunked(5).forEach { rowItems ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+                                rowItems.forEach { (num, ans) ->
+                                    Box(
+                                        modifier = Modifier.weight(1f).background(Color(0xFFF5F3EC), RoundedCornerShape(8.dp)).padding(vertical = 10.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) { Text("$num: $ans", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = PSM_NAVY) }
+                                }
+                                repeat(5 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+
+            questions.forEachIndexed { idx, q ->
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
+                        .background(Color.White, RoundedCornerShape(14.dp))
+                        .padding(vertical = 8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.Top) {
+                        Box(modifier = Modifier.size(26.dp).background(PSM_NAVY, CircleShape), contentAlignment = Alignment.Center) {
+                            Text(q.number, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Text(q.question, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A), modifier = Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    if (!quizMode) {
+                        Column(modifier = Modifier.padding(start = 36.dp)) {
+                            q.options.forEachIndexed { oi, opt ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                        .background(Color(0xFFFAF8F3), RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                                ) { Text("${psmOptionLetter(opt, oi)}) ${psmOptionText(opt)}", fontSize = 13.5.sp, color = Color(0xFF1A1A1A)) }
+                            }
+                            if (q.correctAnswer.isNotBlank()) {
+                                Spacer(Modifier.height(6.dp))
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().background(Color(0xFFEAF6E9), RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                                ) { Text("✓ Correct Answer: ${q.correctAnswer}", color = PSM_GREEN, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                            }
+                        }
+                    } else {
+                        Column(modifier = Modifier.padding(start = 36.dp)) {
+                            val isRevealed = revealed.contains(idx)
+                            q.options.forEachIndexed { oi, opt ->
+                                val letter = psmOptionLetter(opt, oi)
+                                val isCorrect = letter == q.correctAnswer.trim()
+                                val picked = pickedLetters[idx] == letter
+                                val bg = when {
+                                    !isRevealed -> Color(0xFFFAF8F3)
+                                    isCorrect -> Color(0xFFDCF5E0)
+                                    picked && !isCorrect -> Color(0xFFFBE0DE)
+                                    else -> Color(0xFFFAF8F3)
+                                }
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                        .background(bg, RoundedCornerShape(10.dp))
+                                        .clickable(enabled = !isRevealed) {
+                                            pickedLetters = pickedLetters + (idx to letter)
+                                            revealed = revealed + idx
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                                ) { Text("$letter) ${psmOptionText(opt)}", fontSize = 13.5.sp, color = Color(0xFF1A1A1A)) }
+                            }
+                            if (isRevealed && q.explanation.isNotBlank()) {
+                                Spacer(Modifier.height(6.dp))
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().background(Color(0xFFFCF3D9), RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                                ) {
+                                    Column {
+                                        Text("Solid Fact / Explanation", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF946B00))
+                                        Spacer(Modifier.height(3.dp))
+                                        Text(q.explanation, fontSize = 12.5.sp, color = Color(0xFF1A1A1A))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(30.dp))
+        }
+    }
+}
+
+// ---------- Daily Practice: Mixed 125-Q — full scored test, matching the
+// website's renderMixedTestMode / renderMixedTestResult exactly (start card
+// -> all Q on one page -> submit -> donut-chart result + Answer Review). ----------
+
+@Composable
+private fun PsmMixedTestView(catKey: String, partKey: String) {
+    var loading by remember { mutableStateOf(true) }
+    var questions by remember { mutableStateOf<List<PsmQuestion>>(emptyList()) }
+    var dateStr by remember { mutableStateOf("") }
+    var testStarted by remember { mutableStateOf(false) }
+    var testSubmitted by remember { mutableStateOf(false) }
+    var showResult by remember { mutableStateOf(false) }
+    var answers by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
+
+    LaunchedEffect(catKey, partKey) {
+        val db = FirebaseDatabase.getInstance().getReference("dailyPractice").child(catKey)
+        db.child(partKey).get().addOnSuccessListener {
+            loading = false
+            questions = psmParseQuestions(it.getValue(String::class.java) ?: "")
+        }.addOnFailureListener { loading = false }
+        db.child("date").get().addOnSuccessListener { dateStr = it.getValue(String::class.java) ?: "" }
+    }
+
+    if (loading) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PSM_NAVY) }
+        return
+    }
+    val total = questions.size
+
+    Column(Modifier.fillMaxSize().background(Color(0xFFFAF8F3)).padding(20.dp)) {
+        if (!(testSubmitted && showResult)) {
+            Text("Mixed — All Topics ($total Q)", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A))
+            if (dateStr.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text("Today's Test — $dateStr", fontSize = 13.sp, color = Color(0xFF5B5F6B))
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        when {
+            total == 0 -> Text("Coming soon.", fontSize = 13.sp, color = Color(0xFF5B5F6B))
+
+            !testStarted -> {
+                Column(
+                    modifier = Modifier.fillMaxWidth().background(PSM_NAVY, RoundedCornerShape(18.dp)).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("🎯", fontSize = 40.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Text("Full Test — $total Questions", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "All questions will appear on a single page — answer as many as you like, then Submit at the end to see your result.",
+                        color = Color(0xFFB9BDC7), fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(18.dp))
+                    Button(
+                        onClick = { testStarted = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = PSM_CORAL),
+                        shape = RoundedCornerShape(100.dp),
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                    ) { Text("▶ Start Test", color = Color.White, fontWeight = FontWeight.Bold) }
+                }
+            }
+
+            testSubmitted && !showResult -> {
+                Column(
+                    modifier = Modifier.fillMaxWidth().background(PSM_NAVY, RoundedCornerShape(18.dp)).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(modifier = Modifier.size(56.dp).background(PSM_GREEN, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                        Text("✓", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text("Test Submitted!", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Tap the button below to see your result.", color = Color(0xFFB9BDC7), fontSize = 13.sp)
+                    Spacer(Modifier.height(18.dp))
+                    Button(
+                        onClick = { showResult = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = PSM_CORAL),
+                        shape = RoundedCornerShape(100.dp),
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                    ) { Text("📊 Show My Result", color = Color.White, fontWeight = FontWeight.Bold) }
+                }
+            }
+
+            testSubmitted && showResult -> {
+                PsmMixedTestResultView(questions, answers, onRetake = {
+                    answers = emptyMap(); testSubmitted = false; showResult = false; testStarted = true
+                })
+            }
+
+            else -> {
+                val answeredCount = answers.size
+                val progressPct = if (total > 0) answeredCount / total.toFloat() else 0f
+                Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    LinearProgressIndicator(
+                        progress = { progressPct }, color = PSM_GOLD, trackColor = Color(0xFFE3DFD3),
+                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text("Answered $answeredCount / $total", fontSize = 12.sp, color = Color(0xFF5B5F6B))
+                    Spacer(Modifier.height(14.dp))
+
+                    questions.forEachIndexed { idx, q ->
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
+                                .background(Color.White, RoundedCornerShape(14.dp))
+                                .border(1.dp, PSM_GOLD, RoundedCornerShape(14.dp))
+                                .padding(16.dp)
+                        ) {
+                            Text("${idx + 1}. ${q.question}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF1A1A1A))
+                            Spacer(Modifier.height(10.dp))
+                            q.options.forEachIndexed { oi, opt ->
+                                val letter = psmOptionLetter(opt, oi)
+                                val picked = answers[idx] == letter
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                        .background(if (picked) Color(0xFFE8F0FC) else Color(0xFFFAF8F3), RoundedCornerShape(10.dp))
+                                        .border(if (picked) 1.5.dp else 0.dp, Color(0xFF2F6FE0), RoundedCornerShape(10.dp))
+                                        .clickable { answers = answers + (idx to letter) }
+                                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                                ) { Text("${psmOptionLetter(opt, oi)}) ${psmOptionText(opt)}", fontSize = 13.5.sp, color = if (picked) Color(0xFF2F6FE0) else Color(0xFF1A1A1A)) }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Button(
+                    onClick = { testSubmitted = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = PSM_CORAL),
+                    shape = RoundedCornerShape(100.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) { Text("✅ Submit Test", color = Color.White, fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PsmMixedTestResultView(questions: List<PsmQuestion>, answers: Map<Int, String>, onRetake: () -> Unit) {
+    val total = questions.size
+    var attempted = 0
+    var right = 0
+    var wrong = 0
+    questions.forEachIndexed { idx, q ->
+        val picked = answers[idx]
+        if (picked != null) {
+            attempted++
+            if (picked == q.correctAnswer.trim()) right++ else wrong++
+        }
+    }
+    val notAttempted = total - attempted
+    val pct = if (total > 0) (right * 100 / total) else 0
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Text("Mixed — All Topics — Result", fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A))
+        Spacer(Modifier.height(14.dp))
+
+        Column(
+            modifier = Modifier.fillMaxWidth().background(PSM_NAVY, RoundedCornerShape(18.dp)).padding(22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            PsmResultDonut(right = right, wrong = wrong, notAttempted = notAttempted, total = total, pct = pct)
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                PsmLegendDot(Color(0xFF1F9D55), "Right")
+                PsmLegendDot(PSM_RED, "Wrong")
+                PsmLegendDot(PSM_GOLD, "Not Attempted")
+            }
+            Spacer(Modifier.height(18.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                PsmStatBox("$total", "TOTAL")
+                PsmStatBox("$attempted", "ATTEMPTED")
+                PsmStatBox("$notAttempted", "LEFT")
+                PsmStatBox("$right", "RIGHT", Color(0xFF1F9D55))
+                PsmStatBox("$wrong", "WRONG", PSM_RED)
+            }
+            Spacer(Modifier.height(18.dp))
+            Box(
+                modifier = Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(100.dp))
+                    .clickable { }.padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) { Text("OK", color = PSM_CORAL, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+            Spacer(Modifier.height(10.dp))
+            Box(
+                modifier = Modifier.fillMaxWidth().border(1.dp, Color(0xFF3A4A66), RoundedCornerShape(100.dp))
+                    .clickable(onClick = onRetake).padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) { Text("↻ Retake Test", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+        }
+
+        Spacer(Modifier.height(22.dp))
+        Text("📋 Answer Review", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A1A1A))
+        Spacer(Modifier.height(12.dp))
+
+        questions.forEachIndexed { idx, q ->
+            val picked = answers[idx]
+            val correct = q.correctAnswer.trim()
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
+                    .background(Color.White, RoundedCornerShape(14.dp))
+                    .border(1.dp, PSM_GOLD, RoundedCornerShape(14.dp))
+                    .padding(16.dp)
+            ) {
+                Text("${idx + 1}. ${q.question}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF1A1A1A))
+                Spacer(Modifier.height(10.dp))
+                q.options.forEachIndexed { oi, opt ->
+                    val letter = psmOptionLetter(opt, oi)
+                    val isCorrect = letter == correct
+                    val isPicked = picked == letter
+                    val bg = when {
+                        isPicked && isCorrect -> Color(0xFFDCF5E0)
+                        isPicked && !isCorrect -> Color(0xFFFBE0DE)
+                        isCorrect -> Color(0xFFDCF5E0)
+                        else -> Color(0xFFFAF8F3)
+                    }
+                    val textColor = when {
+                        isPicked && !isCorrect -> PSM_RED
+                        isCorrect -> Color(0xFF1F7A3D)
+                        else -> Color(0xFF1A1A1A)
+                    }
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            .background(bg, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                    ) { Text("$letter) ${psmOptionText(opt)}", fontSize = 13.5.sp, color = textColor, fontWeight = if (isCorrect || isPicked) FontWeight.Bold else FontWeight.Normal) }
+                }
+            }
+        }
+        Spacer(Modifier.height(30.dp))
+    }
+}
+
+@Composable
+private fun PsmResultDonut(right: Int, wrong: Int, notAttempted: Int, total: Int, pct: Int) {
+    val strokeWidthDp = 26.dp
+    androidx.compose.foundation.Canvas(modifier = Modifier.size(210.dp)) {
+        val stroke = strokeWidthDp.toPx()
+        val diameter = size.minDimension - stroke
+        val topLeft = androidx.compose.ui.geometry.Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
+        val arcSize = androidx.compose.ui.geometry.Size(diameter, diameter)
+        val safeTotal = if (total > 0) total else 1
+        val rightSweep = 360f * right / safeTotal
+        val wrongSweep = 360f * wrong / safeTotal
+        val notAttemptedSweep = 360f - rightSweep - wrongSweep
+
+        var startAngle = -90f
+        drawArc(color = Color(0xFF1F9D55), startAngle = startAngle, sweepAngle = rightSweep, useCenter = false, topLeft = topLeft, size = arcSize, style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke))
+        startAngle += rightSweep
+        drawArc(color = Color(0xFFE85D4C), startAngle = startAngle, sweepAngle = wrongSweep, useCenter = false, topLeft = topLeft, size = arcSize, style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke))
+        startAngle += wrongSweep
+        drawArc(color = Color(0xFFD4A017), startAngle = startAngle, sweepAngle = notAttemptedSweep, useCenter = false, topLeft = topLeft, size = arcSize, style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke))
+    }
+    Box(modifier = Modifier.size(210.dp), contentAlignment = Alignment.Center) {
+        Text("$pct%", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+    }
+}
+
+@Composable
+private fun PsmLegendDot(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.size(10.dp).background(color, CircleShape))
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = Color(0xFFB9BDC7), fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun RowScope.PsmStatBox(value: String, label: String, valueColor: Color = Color.White) {
+    Column(
+        modifier = Modifier.weight(1f).background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp)).padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(value, color = valueColor, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.height(3.dp))
+        Text(label, color = Color(0xFF9099AD), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+    }
+}
 
 @Composable
 private fun PsmSelfAssessmentView(catKey: String, mobile: String) {
