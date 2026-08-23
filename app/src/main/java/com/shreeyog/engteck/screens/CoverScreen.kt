@@ -38,6 +38,7 @@ data class CoverContent(
 @Composable
 fun CoverScreen(onProgressClick: () -> Unit = {}) {
     var content by remember { mutableStateOf(CoverContent()) }
+    var loaded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         FirebaseDatabase.getInstance().getReference("content")
@@ -53,7 +54,9 @@ fun CoverScreen(onProgressClick: () -> Unit = {}) {
                         statYears = snapshot.child("statYears").getValue(String::class.java) ?: content.statYears
                     )
                 }
+                loaded = true
             }
+            .addOnFailureListener { loaded = true }
     }
 
     Box(
@@ -92,7 +95,7 @@ fun CoverScreen(onProgressClick: () -> Unit = {}) {
             ) {
                 Text("★ ", color = Gold, fontSize = 12.sp)
                 EditableText("trustBadge", content.trustBadge, { content = content.copy(trustBadge = it) }) { v ->
-                    Text(v, color = GoldSoft, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(if (loaded) v else "", color = GoldSoft, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -153,9 +156,9 @@ fun CoverScreen(onProgressClick: () -> Unit = {}) {
 
             Spacer(Modifier.height(22.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                StatBox("statStudents", content.statStudents, "STUDENTS", { content = content.copy(statStudents = it) }, Modifier.weight(1f))
-                StatBox("statSuccess", content.statSuccess, "SUCCESS RATE", { content = content.copy(statSuccess = it) }, Modifier.weight(1f))
-                StatBox("statYears", content.statYears, "YEARS", { content = content.copy(statYears = it) }, Modifier.weight(1f))
+                StatBox("statStudents", if (loaded) content.statStudents else "", "STUDENTS", { content = content.copy(statStudents = it) }, Modifier.weight(1f))
+                StatBox("statSuccess", if (loaded) content.statSuccess else "", "SUCCESS RATE", { content = content.copy(statSuccess = it) }, Modifier.weight(1f))
+                StatBox("statYears", if (loaded) content.statYears else "", "YEARS", { content = content.copy(statYears = it) }, Modifier.weight(1f))
             }
 
             Spacer(Modifier.height(14.dp))
