@@ -62,8 +62,11 @@ fun HomeScreen(teacherName: String) {
                 0 -> {
                     var selectedBook by remember { mutableStateOf<Pair<String, String>?>(null) }
                     var showProgressAnalytics by remember { mutableStateOf(false) }
+                    var showFlashcards by remember { mutableStateOf(false) }
                     if (showProgressAnalytics) {
                         ProgressAnalyticsScreen(onClose = { showProgressAnalytics = false })
+                    } else if (showFlashcards) {
+                        FlashcardScreen(onBack = { showFlashcards = false })
                     } else if (selectedBook != null) {
                         MiniBookReaderScreen(
                             bookKey = selectedBook!!.first,
@@ -79,6 +82,7 @@ fun HomeScreen(teacherName: String) {
                             Column {
                                 CoverScreen(onProgressClick = { showProgressAnalytics = true })
                                 TeacherProfileCard()
+                                FlashcardsCard(onOpen = { showFlashcards = true })
                                 DemoVideoCard()
                                 SelectedAspirantsCard()
                                 AreasCoveredCard()
