@@ -41,7 +41,7 @@ private val DECK_LABELS = mapOf(
 // 1. Ubiquitous (adjective)
 // Meaning: Present everywhere at the same time.
 // Example: Smartphones have become ubiquitous in modern life.
-private fun parseFlashcards(raw: String): List<Flashcard> {
+fun parseFlashcards(raw: String): List<Flashcard> {
     if (raw.isBlank()) return emptyList()
     val parts = raw.split(Regex("\n(?=\\s*\\d+[.)]\\s)"))
     return parts.map { it.trim() }.filter { it.isNotEmpty() }.mapIndexedNotNull { i, block ->
@@ -94,20 +94,23 @@ fun FlashcardsCard(onOpenDeck: (deckKey: String, deckLabel: String) -> Unit, onM
                     RoundedCornerShape(18.dp)
                 )
                 .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(18.dp))
-                .padding(horizontal = 20.dp, vertical = 18.dp)
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 "Grow with Flashcards",
                 color = Color.White,
                 fontSize = 21.sp,
-                fontWeight = FontWeight.ExtraBold
+                fontWeight = FontWeight.ExtraBold,
+                textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 "Read, Repeat, Remember",
                 color = Color(0xFFF0D384),
                 fontSize = 13.sp,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center
             )
         }
 
@@ -154,14 +157,14 @@ private fun FlashcardDeckCard(deck: FlashcardDeck, onClick: () -> Unit) {
             .border(1.5.dp, Color(0xFFD4A017), RoundedCornerShape(18.dp))
             .clickable(onClick = onClick)
             .padding(18.dp),
-        verticalArrangement = Arrangement.SpaceBetween
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("🃏", fontSize = 26.sp)
-        Column {
-            Text(deck.label, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
-            Text("${deck.count} cards", color = Color(0xFFF0D384), fontSize = 12.sp)
-        }
+        Spacer(Modifier.height(10.dp))
+        Text(deck.label, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(4.dp))
+        Text("${deck.count} cards", color = Color(0xFFF0D384), fontSize = 12.sp, textAlign = TextAlign.Center)
     }
 }
 
