@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.firebase.database.FirebaseDatabase
 
 @Composable
 fun ProfileTabScreen() {
@@ -118,9 +119,58 @@ private fun AdminPanelScreen(teacherKey: String, teacherName: String) {
         Spacer(Modifier.height(10.dp))
         Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Scores Manager", "🏆") { AdminScoresManagerCard() } }
         Spacer(Modifier.height(10.dp))
+        Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Selected Aspirants Card", "🎓") { AdminSelectedAspirantsVisibilityCard() } }
+        Spacer(Modifier.height(10.dp))
         Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Special Note Books", "📕") { AdminMiniBookUploadCard() } }
         Spacer(Modifier.height(10.dp))
         Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Data Viewer", "📊") { AdminDataViewersCard() } }
         Spacer(Modifier.height(30.dp))
+    }
+}
+
+@Composable
+private fun AdminSelectedAspirantsVisibilityCard() {
+    var isVisible by remember { mutableStateOf(true) }
+    var loaded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        FirebaseDatabase.getInstance().getReference("content").child("showSelectedAspirantsCard")
+            .get()
+            .addOnSuccessListener { snapshot ->
+                isVisible = snapshot.getValue(Boolean::class.java) ?: true
+                loaded = true
+            }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Show on Home Screen",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF12203D)
+                )
+                Text(
+                    if (isVisible) "Card is currently visible" else "Card is currently hidden",
+                    fontSize = 11.sp,
+                    color = Color(0xFF5B5F6B)
+                )
+            }
+            Switch(
+                checked = isVisible,
+                enabled = loaded,
+                onCheckedChange = { checked ->
+                    isVisible = checked
+                    FirebaseDatabase.getInstance().getReference("content")
+                        .child("showSelectedAspirantsCard")
+                        .setValue(checked)
+                }
+            )
+        }
     }
 }
