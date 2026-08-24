@@ -211,7 +211,7 @@ private fun YouTubeEmbedPlayer(videoId: String) {
                     <html>
                     <body style="margin:0;padding:0;background:#000;">
                     <iframe width="100%" height="100%"
-                        src="https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1&rel=0"
+                        src="https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1&rel=0&origin=https://www.youtube.com&enablejsapi=1"
                         frameborder="0"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         allowfullscreen>
