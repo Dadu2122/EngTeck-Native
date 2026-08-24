@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.database.FirebaseDatabase
+import kotlinx.coroutines.delay
 
 // ============================================================================
 // Data model + parsing
@@ -71,6 +72,7 @@ fun parseFlashcards(raw: String): List<Flashcard> {
 @Composable
 fun FlashcardsCard(onOpenDeck: (deckKey: String, deckLabel: String) -> Unit, onManageContent: () -> Unit) {
     var decks by remember { mutableStateOf<List<FlashcardDeck>>(emptyList()) }
+    var tapCount by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         FirebaseDatabase.getInstance().getReference("flashcardsPublic")
@@ -81,6 +83,13 @@ fun FlashcardsCard(onOpenDeck: (deckKey: String, deckLabel: String) -> Unit, onM
                     if (count > 0) FlashcardDeck(key, DECK_LABELS[key] ?: key, count) else null
                 }
             }
+    }
+
+    LaunchedEffect(tapCount) {
+        if (tapCount > 0) {
+            delay(1500)
+            tapCount = 0
+        }
     }
 
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -121,7 +130,13 @@ fun FlashcardsCard(onOpenDeck: (deckKey: String, deckLabel: String) -> Unit, onM
                 color = Color(0xFF8A8E9E),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.clickable { onManageContent() }
+                modifier = Modifier.clickable {
+                    tapCount++
+                    if (tapCount >= 4) {
+                        tapCount = 0
+                        onManageContent()
+                    }
+                }
             )
         }
 
@@ -130,6 +145,14 @@ fun FlashcardsCard(onOpenDeck: (deckKey: String, deckLabel: String) -> Unit, onM
         if (decks.isEmpty()) {
             Box(Modifier.fillMaxWidth().padding(horizontal = 22.dp)) {
                 Text("Flashcard decks coming soon.", color = Color(0xFF8A8E9E), fontSize = 12.sp)
+            }
+        } else if (decks.size == 1) {
+            // Single deck: center it instead of left-anchoring in a scroll row
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                FlashcardDeckCard(decks[0], onClick = { onOpenDeck(decks[0].key, decks[0].label) })
             }
         } else {
             LazyRow(
