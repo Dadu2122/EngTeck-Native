@@ -204,6 +204,11 @@ private fun YouTubeEmbedPlayer(videoId: String) {
                 settings.loadWithOverviewMode = true
                 settings.useWideViewPort = true
                 settings.cacheMode = WebSettings.LOAD_DEFAULT
+                // YouTube blocks embedded playback when it detects the default
+                // Android WebView user agent (which contains "; wv"). Spoofing a
+                // normal Chrome mobile user agent avoids that block.
+                settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) " +
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
                 webChromeClient = WebChromeClient()
                 setBackgroundColor(0xFF000000.toInt())
 
