@@ -207,26 +207,8 @@ private fun YouTubeEmbedPlayer(videoId: String) {
                 webChromeClient = WebChromeClient()
                 setBackgroundColor(0xFF000000.toInt())
 
-                val html = """
-                    <html>
-                    <body style="margin:0;padding:0;background:#000;">
-                    <iframe width="100%" height="100%"
-                        src="https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1&rel=0&origin=https://www.youtube.com&enablejsapi=1"
-                        frameborder="0"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowfullscreen>
-                    </iframe>
-                    </body>
-                    </html>
-                """.trimIndent()
-
-                loadDataWithBaseURL(
-                    "https://www.youtube.com",
-                    html,
-                    "text/html",
-                    "utf-8",
-                    null
-                )
+                val embedUrl = "https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1&rel=0"
+                loadUrl(embedUrl)
             }
         }
     )
