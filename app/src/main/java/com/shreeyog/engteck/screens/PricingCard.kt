@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -59,6 +60,11 @@ fun PricingCard() {
         )
         Spacer(Modifier.height(18.dp))
 
+        // Fixed height here (instead of letting each card size itself) stops
+        // the whole row — and everything below it — from jumping up/down as
+        // you swipe: 1-line items ("Live Classes") and 2-line items
+        // ("Work-wise important notes") used to resize the row on every
+        // scroll frame, which read as the cards "vibrating".
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(OFFER_ITEMS.withIndex().toList()) { (index, item) ->
                 Row(
@@ -66,6 +72,7 @@ fun PricingCard() {
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                     modifier = Modifier
                         .width(132.dp)
+                        .height(52.dp)
                         .background(Color.White.copy(alpha = 0.07f), RoundedCornerShape(10.dp))
                         .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
                         .padding(horizontal = 9.dp, vertical = 8.dp)
@@ -76,7 +83,15 @@ fun PricingCard() {
                     ) {
                         Text("${index + 1}", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF12203D))
                     }
-                    Text(item, color = Color.White, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, lineHeight = 13.sp)
+                    Text(
+                        item,
+                        color = Color.White,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 13.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -135,7 +150,7 @@ fun PricingCard() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
-                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                    .border(1.5.dp, Color(0xFFE0304A), RoundedCornerShape(12.dp))
                     .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
                 Text(
