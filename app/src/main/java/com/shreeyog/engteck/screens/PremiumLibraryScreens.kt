@@ -36,7 +36,7 @@ import com.google.firebase.database.FirebaseDatabase
 // Hosted on the same real GitHub Pages domain as the Shree English Classes
 // website — YouTube trusts this origin exactly like it trusts the website,
 // which is why this actually plays in-app instead of getting rejected.
-private const val VIDEO_EMBED_HOST = "https://dadu2122.github.io/Shree-English-Classes/video-embed.html"
+const val VIDEO_EMBED_HOST = "https://dadu2122.github.io/Shree-English-Classes/video-embed.html"
 
 // Enables real fullscreen + landscape for the embedded YouTube player — without
 // this, tapping YouTube's own fullscreen button inside the WebView does nothing,
