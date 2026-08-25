@@ -1,5 +1,11 @@
 package com.shreeyog.engteck.screens
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateColor
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -110,6 +116,21 @@ private fun MiniBookCard(book: MiniBook, onClick: () -> Unit) {
         SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date(book.addedAt))
     } else ""
 
+    // Pulsing red — draws attention to the download count without needing a
+    // calendar-style emoji glyph (some keyboards/OS emoji sets render 📅 with
+    // a baked-in date number like "17" on the icon itself, which read as a
+    // second, wrong date next to the real one).
+    val infiniteTransition = rememberInfiniteTransition(label = "downloadsBlink")
+    val downloadsColor by infiniteTransition.animateColor(
+        initialValue = Color(0xFFFF5B4C),
+        targetValue = Color(0xFFFF5B4C).copy(alpha = 0.45f),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "downloadsBlinkColor"
+    )
+
     Box(
         modifier = Modifier
             .width(150.dp)
@@ -179,9 +200,10 @@ private fun MiniBookCard(book: MiniBook, onClick: () -> Unit) {
                 }
                 if (dateLabel.isNotEmpty()) {
                     Spacer(Modifier.height(6.dp))
-                    Text("📅 $dateLabel", color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp)
+                    // No calendar emoji here on purpose — see comment above.
+                    Text(dateLabel, color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp)
                 }
-                Text("⬇ Total Downloads - ${book.downloads}", color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp)
+                Text("⬇ Total Downloads - ${book.downloads}", color = downloadsColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
