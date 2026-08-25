@@ -17,13 +17,19 @@ object Routes {
     const val HOME = "home"
 }
 
+// initialJoinCode comes from a tapped class-share link (see MainActivity) —
+// when present, the app opens straight into JoinCodeScreen with that code
+// already filled in and auto-submitted instead of the normal Home start.
 @Composable
-fun EngTeckNavGraph() {
+fun EngTeckNavGraph(initialJoinCode: String? = null) {
     val navController: NavHostController = rememberNavController()
     val teacherName = remember { mutableStateOf("Teacher") }
 
-    // App now opens straight into Home — no splash, no Join Code step.
-    NavHost(navController = navController, startDestination = Routes.HOME) {
+    val startDestination = if (!initialJoinCode.isNullOrBlank()) Routes.JOIN_CODE else Routes.HOME
+
+    // App otherwise still opens straight into Home — no splash, no manual
+    // Join Code step — unchanged from before.
+    NavHost(navController = navController, startDestination = startDestination) {
         composable(Routes.SPLASH) {
             SplashScreen(onFinished = {
                 navController.navigate(Routes.JOIN_CODE) {
@@ -32,12 +38,15 @@ fun EngTeckNavGraph() {
             })
         }
         composable(Routes.JOIN_CODE) {
-            JoinCodeScreen(onValidCode = { _, name ->
-                teacherName.value = name
-                navController.navigate(Routes.HOME) {
-                    popUpTo(Routes.JOIN_CODE) { inclusive = true }
+            JoinCodeScreen(
+                prefillCode = initialJoinCode,
+                onValidCode = { _, name ->
+                    teacherName.value = name
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.JOIN_CODE) { inclusive = true }
+                    }
                 }
-            })
+            )
         }
         composable(Routes.HOME) {
             HomeScreen(teacherName = teacherName.value)
