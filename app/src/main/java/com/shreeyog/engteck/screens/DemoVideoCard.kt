@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -187,6 +188,12 @@ fun DemoVideoCard() {
     }
 }
 
+// Plays through the same trusted GitHub Pages embed page used by the Video
+// Library (VIDEO_EMBED_HOST, defined in PremiumLibraryScreens.kt). Loading
+// youtube.com/embed directly inside a raw WebView has no trusted origin/referrer,
+// which is exactly what triggers YouTube's "Error 153 — Video player
+// configuration error". Routing through the hosted page fixes it the same way
+// it already works for Video Library videos.
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun YouTubeEmbedPlayer(videoId: String) {
@@ -204,16 +211,11 @@ private fun YouTubeEmbedPlayer(videoId: String) {
                 settings.loadWithOverviewMode = true
                 settings.useWideViewPort = true
                 settings.cacheMode = WebSettings.LOAD_DEFAULT
-                // YouTube blocks embedded playback when it detects the default
-                // Android WebView user agent (which contains "; wv"). Spoofing a
-                // normal Chrome mobile user agent avoids that block.
-                settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) " +
-                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                webViewClient = WebViewClient()
                 webChromeClient = WebChromeClient()
                 setBackgroundColor(0xFF000000.toInt())
 
-                val embedUrl = "https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1&rel=0"
-                loadUrl(embedUrl)
+                loadUrl("$VIDEO_EMBED_HOST?id=$videoId")
             }
         }
     )
