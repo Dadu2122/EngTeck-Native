@@ -9,6 +9,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -16,6 +18,7 @@ import com.shreeyog.engteck.ui.theme.Gold
 import com.shreeyog.engteck.ui.theme.InkSoft
 import com.shreeyog.engteck.ui.theme.NavyDeep
 import com.shreeyog.engteck.ui.theme.Paper
+import kotlinx.coroutines.launch
 
 data class BottomTab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
@@ -94,26 +97,43 @@ fun HomeScreen(
                                 onBack = { selectedBook = null }
                             )
                         } else {
+                            val homeScrollState = rememberScrollState()
+                            val homeScrollScope = rememberCoroutineScope()
+                            var demoVideoY by remember { mutableStateOf(0) }
+                            var registrationFormY by remember { mutableStateOf(0) }
+
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .verticalScroll(rememberScrollState())
+                                    .verticalScroll(homeScrollState)
                             ) {
                                 Column {
-                                    CoverScreen(onProgressClick = { showProgressAnalytics = true })
+                                    CoverScreen(
+                                        onProgressClick = { showProgressAnalytics = true },
+                                        onRegisterClick = {
+                                            homeScrollScope.launch { homeScrollState.animateScrollTo(registrationFormY) }
+                                        },
+                                        onWatchDemoClick = {
+                                            homeScrollScope.launch { homeScrollState.animateScrollTo(demoVideoY) }
+                                        }
+                                    )
                                     TeacherProfileCard()
                                     FlashcardsCard(
                                         onOpenDeck = { key, label -> openFlashcardDeck = key to label },
                                         onManageContent = { showFlashcardAdmin = true }
                                     )
-                                    DemoVideoCard()
+                                    Box(modifier = Modifier.onGloballyPositioned { demoVideoY = it.positionInParent().y.toInt() }) {
+                                        DemoVideoCard()
+                                    }
                                     SelectedAspirantsCard()
                                     AreasCoveredCard()
                                     PricingCard()
                                     SyllabusPdfCard()
                                     InquiryFormCard()
                                     MiniBooksScreen(onBookClick = { key, title -> selectedBook = key to title })
-                                    RegistrationFormCard()
+                                    Box(modifier = Modifier.onGloballyPositioned { registrationFormY = it.positionInParent().y.toInt() }) {
+                                        RegistrationFormCard()
+                                    }
                                     QuestionPapersCard()
                                     OfficialCutoffsCard()
                                     ExpectedCutoffsCard()
