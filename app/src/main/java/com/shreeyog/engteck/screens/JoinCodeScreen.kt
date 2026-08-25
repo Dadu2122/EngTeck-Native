@@ -16,10 +16,44 @@ import com.shreeyog.engteck.ui.theme.InkSoft
 import com.shreeyog.engteck.ui.theme.NavyDeep
 
 @Composable
-fun JoinCodeScreen(onValidCode: (joinCode: String, teacherName: String) -> Unit) {
-    var code by remember { mutableStateOf("") }
+fun JoinCodeScreen(onValidCode: (joinCode: String, teacherName: String) -> Unit, prefillCode: String? = null) {
+    var code by remember { mutableStateOf(prefillCode?.uppercase() ?: "") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+
+    fun submit() {
+        if (code.isBlank()) {
+            error = "Please enter a Join Code"
+            return
+        }
+        loading = true
+        error = null
+        val db = FirebaseDatabase.getInstance()
+        db.getReference("teachers")
+            .orderByChild("joinCode")
+            .equalTo(code)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                loading = false
+                if (snapshot.exists()) {
+                    val firstMatch = snapshot.children.first()
+                    val teacherName = firstMatch.child("name").getValue(String::class.java) ?: "Teacher"
+                    onValidCode(code, teacherName)
+                } else {
+                    error = "This Join Code is not valid"
+                }
+            }
+            .addOnFailureListener {
+                loading = false
+                error = "Connection error — please try again"
+            }
+    }
+
+    // Coming from a tapped class-share link (code already known) — submit
+    // right away instead of making the person retype what they already tapped.
+    LaunchedEffect(prefillCode) {
+        if (!prefillCode.isNullOrBlank()) submit()
+    }
 
     Column(
         modifier = Modifier
@@ -56,33 +90,7 @@ fun JoinCodeScreen(onValidCode: (joinCode: String, teacherName: String) -> Unit)
         Spacer(Modifier.height(20.dp))
 
         Button(
-            onClick = {
-                if (code.isBlank()) {
-                    error = "Please enter a Join Code"
-                    return@Button
-                }
-                loading = true
-                error = null
-                val db = FirebaseDatabase.getInstance()
-                db.getReference("teachers")
-                    .orderByChild("joinCode")
-                    .equalTo(code)
-                    .get()
-                    .addOnSuccessListener { snapshot ->
-                        loading = false
-                        if (snapshot.exists()) {
-                            val firstMatch = snapshot.children.first()
-                            val teacherName = firstMatch.child("name").getValue(String::class.java) ?: "Teacher"
-                            onValidCode(code, teacherName)
-                        } else {
-                            error = "This Join Code is not valid"
-                        }
-                    }
-                    .addOnFailureListener {
-                        loading = false
-                        error = "Connection error — please try again"
-                    }
-            },
+            onClick = { submit() },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp),
