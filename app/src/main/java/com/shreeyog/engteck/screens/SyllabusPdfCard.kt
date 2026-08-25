@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -67,6 +68,12 @@ fun SyllabusPdfCard() {
         }
         Spacer(Modifier.height(16.dp))
 
+        // Fixed height + capped line count here (instead of letting each card
+        // size itself to its own text) stops the whole row — and everything
+        // below it — from jumping up/down as you swipe: short items like
+        // "Literary devices" and long ones like "125 Question-set every
+        // Tuesday and Friday (All topics)" used to resize the row on every
+        // scroll frame, which read as the cards "vibrating".
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(SYLLABUS_ITEMS.withIndex().toList()) { (index, item) ->
                 Row(
@@ -74,6 +81,7 @@ fun SyllabusPdfCard() {
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                     modifier = Modifier
                         .width(158.dp)
+                        .height(64.dp)
                         .background(Color.White.copy(alpha = 0.07f), RoundedCornerShape(10.dp))
                         .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
                         .padding(horizontal = 9.dp, vertical = 8.dp)
@@ -84,7 +92,15 @@ fun SyllabusPdfCard() {
                     ) {
                         Text("${index + 1}", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF12203D))
                     }
-                    Text(item, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, lineHeight = 13.sp)
+                    Text(
+                        item,
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 13.sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
