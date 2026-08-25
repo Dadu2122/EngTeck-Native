@@ -28,7 +28,11 @@ private val tabs = listOf(
 )
 
 @Composable
-fun HomeScreen(teacherName: String) {
+fun HomeScreen(
+    teacherName: String,
+    autoJoinTeacherKey: String? = null,
+    autoJoinTeacherName: String? = null
+) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
     Scaffold(
@@ -58,70 +62,87 @@ fun HomeScreen(teacherName: String) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            when (selectedTab) {
-                0 -> {
-                    var selectedBook by remember { mutableStateOf<Pair<String, String>?>(null) }
-                    var showProgressAnalytics by remember { mutableStateOf(false) }
-                    var openFlashcardDeck by remember { mutableStateOf<Pair<String, String>?>(null) }
-                    var showFlashcardAdmin by remember { mutableStateOf(false) }
-                    if (showProgressAnalytics) {
-                        ProgressAnalyticsScreen(onClose = { showProgressAnalytics = false })
-                    } else if (showFlashcardAdmin) {
-                        FlashcardAdminScreen(onBack = { showFlashcardAdmin = false })
-                    } else if (openFlashcardDeck != null) {
-                        FlashcardScreen(
-                            deckKey = openFlashcardDeck!!.first,
-                            deckLabel = openFlashcardDeck!!.second,
-                            onBack = { openFlashcardDeck = null }
-                        )
-                    } else if (selectedBook != null) {
-                        MiniBookReaderScreen(
-                            bookKey = selectedBook!!.first,
-                            title = selectedBook!!.second,
-                            onBack = { selectedBook = null }
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                        ) {
-                            Column {
-                                CoverScreen(onProgressClick = { showProgressAnalytics = true })
-                                TeacherProfileCard()
-                                FlashcardsCard(
-                                    onOpenDeck = { key, label -> openFlashcardDeck = key to label },
-                                    onManageContent = { showFlashcardAdmin = true }
-                                )
-                                DemoVideoCard()
-                                SelectedAspirantsCard()
-                                AreasCoveredCard()
-                                PricingCard()
-                                SyllabusPdfCard()
-                                InquiryFormCard()
-                                MiniBooksScreen(onBookClick = { key, title -> selectedBook = key to title })
-                                RegistrationFormCard()
-                                QuestionPapersCard()
-                                OfficialCutoffsCard()
-                                ExpectedCutoffsCard()
-                                LiveClassJoinCard()
-                                VideoLibraryCard()
-                                ClassRecordingsCard()
-                                PremiumPdfLibraryCard()
-                                AiTutorCard()
-                                HelpDeskCard()
+            if (!autoJoinTeacherKey.isNullOrBlank()) {
+                // Opened via a tapped class-share link — go straight to that
+                // teacher's join-request form instead of the normal scrolling
+                // home page (no cover page, no manual scrolling/tapping needed).
+                LiveClassJoinCard(
+                    initialTeacherKey = autoJoinTeacherKey,
+                    initialTeacherName = autoJoinTeacherName ?: "Teacher"
+                )
+            } else {
+                when (selectedTab) {
+                    0 -> {
+                        var selectedBook by remember { mutableStateOf<Pair<String, String>?>(null) }
+                        var showProgressAnalytics by remember { mutableStateOf(false) }
+                        var openFlashcardDeck by remember { mutableStateOf<Pair<String, String>?>(null) }
+                        var showFlashcardAdmin by remember { mutableStateOf(false) }
+                        if (showProgressAnalytics) {
+                            ProgressAnalyticsScreen(onClose = { showProgressAnalytics = false })
+                        } else if (showFlashcardAdmin) {
+                            FlashcardAdminScreen(onBack = { showFlashcardAdmin = false })
+                        } else if (openFlashcardDeck != null) {
+                            FlashcardScreen(
+                                deckKey = openFlashcardDeck!!.first,
+                                deckLabel = openFlashcardDeck!!.second,
+                                onBack = { openFlashcardDeck = null }
+                            )
+                        } else if (selectedBook != null) {
+                            MiniBookReaderScreen(
+                                bookKey = selectedBook!!.first,
+                                title = selectedBook!!.second,
+                                onBack = { selectedBook = null }
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                Column {
+                                    CoverScreen(onProgressClick = { showProgressAnalytics = true })
+                                    TeacherProfileCard()
+                                    FlashcardsCard(
+                                        onOpenDeck = { key, label -> openFlashcardDeck = key to label },
+                                        onManageContent = { showFlashcardAdmin = true }
+                                    )
+                                    DemoVideoCard()
+                                    SelectedAspirantsCard()
+                                    AreasCoveredCard()
+                                    PricingCard()
+                                    SyllabusPdfCard()
+                                    InquiryFormCard()
+                                    MiniBooksScreen(onBookClick = { key, title -> selectedBook = key to title })
+                                    RegistrationFormCard()
+                                    QuestionPapersCard()
+                                    OfficialCutoffsCard()
+                                    ExpectedCutoffsCard()
+                                    LiveClassJoinCard()
+                                    VideoLibraryCard()
+                                    ClassRecordingsCard()
+                                    PremiumPdfLibraryCard()
+                                    AiTutorCard()
+                                    HelpDeskCard()
+                                }
                             }
                         }
                     }
-                }
-                1 -> Box(Modifier.fillMaxSize().padding(20.dp)) {
-                    StudyTabRoot()
-                }
-                4 -> Box(Modifier.fillMaxSize()) {
-                    ProfileTabScreen()
-                }
-                else -> Box(Modifier.fillMaxSize().padding(20.dp)) {
-                    PlaceholderTab(tabs[selectedTab].label)
+                    1 -> Box(Modifier.fillMaxSize().padding(20.dp)) {
+                        StudyTabRoot()
+                    }
+                    2 -> Box(Modifier.fillMaxSize()) {
+                        // Fixes the "Live" bottom tab, which previously showed
+                        // only a "coming in next build phase" placeholder even
+                        // though the Live Class join flow already exists —
+                        // students had to find it buried in the Home scroll.
+                        LiveClassJoinCard()
+                    }
+                    4 -> Box(Modifier.fillMaxSize()) {
+                        ProfileTabScreen()
+                    }
+                    else -> Box(Modifier.fillMaxSize().padding(20.dp)) {
+                        PlaceholderTab(tabs[selectedTab].label)
+                    }
                 }
             }
         }
