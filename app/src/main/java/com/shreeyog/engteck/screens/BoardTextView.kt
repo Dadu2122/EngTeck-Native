@@ -116,7 +116,16 @@ fun BoardPastedTextView(pastedText: String, modifier: Modifier = Modifier, textC
     var definition by remember { mutableStateOf("") }
     var loadingDef by remember { mutableStateOf(false) }
 
-    val blocks = remember(pastedText) { formatPastedBoardText(pastedText) }
+    // Defensive: if the poem/prose detection logic ever throws on some edge
+    // case input, fall back to showing the raw pasted text as one plain block
+    // instead of crashing the whole board screen.
+    val blocks = remember(pastedText) {
+        try {
+            formatPastedBoardText(pastedText)
+        } catch (e: Exception) {
+            if (pastedText.isBlank()) emptyList() else listOf(BoardTextBlock(pastedText, isPoem = true))
+        }
+    }
 
     fun onWordTapped(word: String) {
         val cleaned = word.trim(',', '.', ';', ':', '"', '\'', '!', '?', '(', ')', '—', '-')
