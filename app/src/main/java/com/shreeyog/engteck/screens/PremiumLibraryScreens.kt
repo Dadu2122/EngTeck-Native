@@ -170,7 +170,10 @@ private fun PremiumLibraryShell(
 ) {
     val context = LocalContext.current
     var counts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
-    var unlockMsg by remember { mutableStateOf("") }
+
+    // Per-category status/error message — shown INLINE right under that
+    // category's own card, so nothing gets missed by scrolling past it.
+    var catMessages by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
     var mobile by remember { mutableStateOf(getSavedMobile(context)) }
     var showMobileDialog by remember { mutableStateOf(false) }
@@ -180,26 +183,39 @@ private fun PremiumLibraryShell(
     var checkingCatKey by remember { mutableStateOf("") }
 
     // Unlocked category's items are shown as an inline scrolling shelf — no popup.
+    var unlockedCatKey by remember { mutableStateOf("") }
     var unlockedCatLabel by remember { mutableStateOf("") }
     var unlockedItems by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
     var playingIndex by remember { mutableStateOf<Int?>(null) }
 
+    fun setMsg(catKey: String, msg: String) {
+        catMessages = catMessages.toMutableMap().apply { put(catKey, msg) }
+    }
+    fun clearMsg(catKey: String) {
+        catMessages = catMessages.toMutableMap().apply { remove(catKey) }
+    }
+
     LaunchedEffect(firebasePath) {
-        FirebaseDatabase.getInstance().getReference(firebasePath)
-            .get()
-            .addOnSuccessListener { snapshot ->
-                val result = mutableMapOf<String, Int>()
-                for (catSnap in snapshot.children) {
-                    val count = catSnap.child(countChildPath).childrenCount.toInt()
-                    result[catSnap.key ?: ""] = count
+        try {
+            FirebaseDatabase.getInstance().getReference(firebasePath)
+                .get()
+                .addOnSuccessListener { snapshot ->
+                    val result = mutableMapOf<String, Int>()
+                    for (catSnap in snapshot.children) {
+                        val count = catSnap.child(countChildPath).childrenCount.toInt()
+                        result[catSnap.key ?: ""] = count
+                    }
+                    counts = result
                 }
-                counts = result
-            }
+        } catch (e: Exception) {
+            // Silent by design here — the per-category flow below will surface
+            // the real error the moment the user actually taps something.
+        }
     }
 
     fun openCategory(catKey: String, catLabel: String) {
         if (!canOpenItems) {
-            unlockMsg = "$catLabel unlock karne ke liye payment system jald hi native app me aayega"
+            setMsg(catKey, "$catLabel unlock karne ke liye payment system jald hi native app me aayega")
             return
         }
         val currentMobile = getSavedMobile(context)
@@ -210,34 +226,47 @@ private fun PremiumLibraryShell(
             return
         }
         checkingCatKey = catKey
-        unlockMsg = ""
+        clearMsg(catKey)
         playingIndex = null
-        FirebaseDatabase.getInstance().getReference("paidVideoCategories").child(currentMobile).child(catKey)
-            .get()
-            .addOnSuccessListener { snap ->
-                val isPaid = snap.getValue(Boolean::class.java) ?: false
-                if (!isPaid) {
-                    checkingCatKey = ""
-                    unlockedCatLabel = ""
-                    unlockMsg = "$catLabel abhi unlock nahi hai — payment ke baad access milega. Teacher se sampark karein."
-                    return@addOnSuccessListener
-                }
-                FirebaseDatabase.getInstance().getReference(firebasePath).child(catKey).child(countChildPath)
-                    .get()
-                    .addOnSuccessListener { itemsSnap ->
+        try {
+            FirebaseDatabase.getInstance().getReference("paidVideoCategories").child(currentMobile).child(catKey)
+                .get()
+                .addOnSuccessListener { snap ->
+                    val isPaid = snap.getValue(Boolean::class.java) ?: false
+                    if (!isPaid) {
                         checkingCatKey = ""
-                        unlockedItems = itemsSnap.children.map { c ->
-                            LibraryItem(
-                                title = c.child("title").getValue(String::class.java) ?: "Untitled",
-                                url = c.child("url").getValue(String::class.java) ?: "",
-                                date = c.child("date").getValue(String::class.java) ?: ""
-                            )
-                        }
-                        unlockedCatLabel = catLabel
+                        unlockedCatKey = ""
+                        unlockedCatLabel = ""
+                        setMsg(catKey, "$catLabel abhi unlock nahi hai — payment ke baad access milega. Teacher se sampark karein.")
+                        return@addOnSuccessListener
                     }
-                    .addOnFailureListener { checkingCatKey = ""; unlockMsg = "Load karne me dikkat aayi, dobara try karein." }
-            }
-            .addOnFailureListener { checkingCatKey = ""; unlockMsg = "Load karne me dikkat aayi, dobara try karein." }
+                    FirebaseDatabase.getInstance().getReference(firebasePath).child(catKey).child(countChildPath)
+                        .get()
+                        .addOnSuccessListener { itemsSnap ->
+                            checkingCatKey = ""
+                            unlockedItems = itemsSnap.children.map { c ->
+                                LibraryItem(
+                                    title = c.child("title").getValue(String::class.java) ?: "Untitled",
+                                    url = c.child("url").getValue(String::class.java) ?: "",
+                                    date = c.child("date").getValue(String::class.java) ?: ""
+                                )
+                            }
+                            unlockedCatKey = catKey
+                            unlockedCatLabel = catLabel
+                        }
+                        .addOnFailureListener { e ->
+                            checkingCatKey = ""
+                            setMsg(catKey, "Videos load karne me dikkat: ${e.message}")
+                        }
+                }
+                .addOnFailureListener { e ->
+                    checkingCatKey = ""
+                    setMsg(catKey, "Access check karne me dikkat: ${e.message}")
+                }
+        } catch (e: Exception) {
+            checkingCatKey = ""
+            setMsg(catKey, "Error: ${e.message}")
+        }
     }
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp)) {
@@ -254,7 +283,7 @@ private fun PremiumLibraryShell(
 
         PREMIUM_CATS.forEach { (key, catLabel) ->
             val count = counts[key] ?: 0
-            val isActiveShelf = unlockedCatLabel == catLabel
+            val isActiveShelf = unlockedCatKey == key
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -287,6 +316,21 @@ private fun PremiumLibraryShell(
                 }
             }
 
+            // Inline status/error for THIS category, right where it happened.
+            catMessages[key]?.let { msg ->
+                Text(
+                    msg,
+                    fontSize = 11.5.sp,
+                    color = Color(0xFFB3261E),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp)
+                        .background(Color(0xFFFCEBEA), RoundedCornerShape(10.dp))
+                        .padding(10.dp)
+                )
+            }
+
             // The shelf sits directly under whichever category it belongs to.
             if (isActiveShelf) {
                 Spacer(Modifier.height(4.dp))
@@ -297,9 +341,6 @@ private fun PremiumLibraryShell(
                 )
                 Spacer(Modifier.height(14.dp))
             }
-        }
-        if (unlockMsg.isNotEmpty()) {
-            Text(unlockMsg, fontSize = 11.5.sp, color = Color(0xFF946B00))
         }
     }
 
