@@ -1,6 +1,7 @@
 package com.shreeyog.engteck
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -55,10 +56,21 @@ private fun installCrashCatcher(context: Context) {
     }
 }
 
+// Pulls the "jc" (join code) query param out of an incoming App Link, e.g.
+// https://dadu2122.github.io/Shree-English-Classes/?jc=WELCOME2026#liveClassSection
+private fun extractJoinCode(intent: Intent?): String? =
+    intent?.data?.getQueryParameter("jc")
+
 class MainActivity : ComponentActivity() {
+    // A plain class property (not inside onCreate) so onNewIntent below can
+    // update it later too — Compose still recomposes on change since it's a
+    // mutableStateOf, same as any other Compose state.
+    private var deepLinkCode by androidx.compose.runtime.mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         installCrashCatcher(applicationContext)
+        deepLinkCode = extractJoinCode(intent)
 
         val prefs = getSharedPreferences(CRASH_PREFS, Context.MODE_PRIVATE)
         val savedCrash = prefs.getString(CRASH_KEY, null)
@@ -66,7 +78,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             EngTeckTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    EngTeckNavGraph()
+                    EngTeckNavGraph(initialJoinCode = deepLinkCode)
                 }
 
                 var crashText by remember { mutableStateOf(savedCrash) }
@@ -94,5 +106,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    // Handles the case where the app is already open (singleTask launch mode)
+    // and the person taps another class-link — without this, the code from
+    // the new link would just be ignored since onCreate doesn't run again.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        deepLinkCode = extractJoinCode(intent)
     }
 }
