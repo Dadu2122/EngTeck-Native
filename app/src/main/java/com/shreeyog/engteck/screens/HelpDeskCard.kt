@@ -11,9 +11,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.database.FirebaseDatabase
@@ -154,5 +157,75 @@ fun HelpDeskCard() {
             Spacer(Modifier.height(8.dp))
             Text(feedbackStatus, fontSize = 12.sp, color = Color(0xFF1F7A3D))
         }
+
+        Spacer(Modifier.height(24.dp))
+        DeveloperCreditCard()
     }
+}
+
+// Promotional credit card for Shreeyog Website and App Designer — the business
+// behind this app — with a tappable email link, matching the gradient style
+// requested (orange → gold → blue), same as the reference design.
+@Composable
+private fun DeveloperCreditCard() {
+    val context = LocalContext.current
+    val creditEmail = "shreewebandapp@gmail.com"
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                Brush.linearGradient(
+                    listOf(Color(0xFFFF7A45), Color(0xFFFFA83D), Color(0xFFFFD23D), Color(0xFF6EB6FF))
+                ),
+                RoundedCornerShape(18.dp)
+            )
+            .clickable {
+                try {
+                    val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$creditEmail"))
+                    context.startActivity(intent)
+                } catch (e: Exception) { }
+            }
+            .padding(vertical = 18.dp, horizontal = 18.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "आप भी अपनी पर्सनल ऐप बनवाने के लिए संपर्क करें -",
+                color = Color(0xFF12203D),
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                lineHeight = 19.sp
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                creditEmail,
+                color = Color(0xFF12203D),
+                fontSize = 14.5.sp,
+                fontWeight = FontWeight.ExtraBold,
+                textDecoration = TextDecoration.Underline
+            )
+        }
+    }
+
+    Spacer(Modifier.height(14.dp))
+    Text(
+        "© Shreeyog Website and App Designer. Unauthorised use is prohibited. It may lead to legal proceedings.",
+        color = Color(0xFF9B968A),
+        fontSize = 10.5.sp,
+        textAlign = TextAlign.Center,
+        lineHeight = 15.sp,
+        modifier = Modifier.fillMaxWidth()
+    )
+    Spacer(Modifier.height(4.dp))
+    Text(
+        "Coaching Reg. No: UDYAM-UK-09-0013602",
+        color = Color(0xFF9B968A),
+        fontSize = 10.5.sp,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth()
+    )
 }
