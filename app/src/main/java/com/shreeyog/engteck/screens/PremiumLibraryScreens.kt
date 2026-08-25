@@ -175,6 +175,11 @@ private fun PremiumLibraryShell(
     // category's own card, so nothing gets missed by scrolling past it.
     var catMessages by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
+    // Re-reads from SharedPreferences on every recomposition trigger via this
+    // counter, so the "registered number" line updates right after Change/Save.
+    var mobileRefreshTick by remember { mutableStateOf(0) }
+    val savedMobileForDisplay = remember(mobileRefreshTick) { getSavedMobile(context) }
+
     var mobile by remember { mutableStateOf(getSavedMobile(context)) }
     var showMobileDialog by remember { mutableStateOf(false) }
     var pendingCatKey by remember { mutableStateOf("") }
@@ -222,6 +227,7 @@ private fun PremiumLibraryShell(
         if (currentMobile.length != 10) {
             pendingCatKey = catKey
             pendingCatLabel = catLabel
+            mobile = currentMobile
             showMobileDialog = true
             return
         }
@@ -279,7 +285,35 @@ private fun PremiumLibraryShell(
         )
         Spacer(Modifier.height(6.dp))
         Text("$icon $title", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A))
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(6.dp))
+
+        // Lets you re-enter a different mobile number any time — without this,
+        // once a number was saved once (even a test one), the app skips
+        // straight to the paid/not-paid check on every tap and the "enter
+        // your number" dialog never shows again.
+        if (canOpenItems) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (savedMobileForDisplay.length == 10) "Registered: $savedMobileForDisplay" else "No number saved yet",
+                    fontSize = 11.sp,
+                    color = Color(0xFF5B5F6B)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Change",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1B6B79),
+                    modifier = Modifier.clickable {
+                        pendingCatKey = ""
+                        pendingCatLabel = ""
+                        mobile = savedMobileForDisplay
+                        showMobileDialog = true
+                    }
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+        }
 
         PREMIUM_CATS.forEach { (key, catLabel) ->
             val count = counts[key] ?: 0
@@ -369,8 +403,9 @@ private fun PremiumLibraryShell(
                     onClick = {
                         if (mobile.length != 10) return@Button
                         saveMobile(context, mobile)
+                        mobileRefreshTick++
                         showMobileDialog = false
-                        openCategory(pendingCatKey, pendingCatLabel)
+                        if (pendingCatKey.isNotEmpty()) openCategory(pendingCatKey, pendingCatLabel)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4A017), contentColor = Color(0xFF12203D)),
                     shape = RoundedCornerShape(12.dp),
