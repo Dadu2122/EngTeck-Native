@@ -25,7 +25,25 @@ android {
         }
     }
 
+    // Fixed debug keystore, committed at app/debug.keystore â€” WITHOUT this,
+    // Gradle auto-generates a fresh random debug keystore on every machine
+    // that doesn't already have one (like each brand-new GitHub Actions
+    // runner), which means every build gets a different signing fingerprint.
+    // App Links verification (assetlinks.json) needs one fixed fingerprint
+    // that never changes, so this keystore must always be the same one.
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
