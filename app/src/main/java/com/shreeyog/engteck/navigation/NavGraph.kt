@@ -26,6 +26,11 @@ fun EngTeckNavGraph(initialJoinCode: String? = null) {
     val navController: NavHostController = rememberNavController()
     val teacherName = remember { mutableStateOf("Teacher") }
 
+    // Set once the join-code lookup resolves — carried to HomeScreen so it
+    // can skip straight into that teacher's Live Class join form instead of
+    // the normal scrolling home page.
+    val autoJoinTeacherKey = remember { mutableStateOf<String?>(null) }
+
     val startDestination = if (!initialJoinCode.isNullOrBlank()) Routes.JOIN_CODE else Routes.HOME
 
     // NavHost's startDestination is only applied when the graph is first
@@ -55,8 +60,9 @@ fun EngTeckNavGraph(initialJoinCode: String? = null) {
         composable(Routes.JOIN_CODE) {
             JoinCodeScreen(
                 prefillCode = initialJoinCode,
-                onValidCode = { _, name ->
+                onValidCode = { _, teacherKey, name ->
                     teacherName.value = name
+                    autoJoinTeacherKey.value = teacherKey
                     navController.navigate(Routes.HOME) {
                         popUpTo(Routes.JOIN_CODE) { inclusive = true }
                     }
@@ -64,7 +70,11 @@ fun EngTeckNavGraph(initialJoinCode: String? = null) {
             )
         }
         composable(Routes.HOME) {
-            HomeScreen(teacherName = teacherName.value)
+            HomeScreen(
+                teacherName = teacherName.value,
+                autoJoinTeacherKey = autoJoinTeacherKey.value,
+                autoJoinTeacherName = teacherName.value
+            )
         }
     }
 }
