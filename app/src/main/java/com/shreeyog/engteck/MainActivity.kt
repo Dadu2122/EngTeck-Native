@@ -39,10 +39,15 @@ private fun installCrashCatcher(context: Context) {
         try {
             val sw = StringWriter()
             throwable.printStackTrace(PrintWriter(sw))
+            // commit() (not apply()) — apply() writes in the background and
+            // returns immediately, but the process is often killed by the OS
+            // crash handler before that background write finishes, so the
+            // crash never actually gets saved. commit() blocks until the
+            // write is done, guaranteeing it's on disk before we continue.
             context.getSharedPreferences(CRASH_PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putString(CRASH_KEY, sw.toString())
-                .apply()
+                .commit()
         } catch (e: Exception) {
             // If even saving the crash fails, there's nothing more we can do here.
         }
