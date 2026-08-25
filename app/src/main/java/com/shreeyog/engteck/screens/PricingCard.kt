@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.sp
 private val OFFER_ITEMS = listOf(
     "Live Classes", "Complete Syllabus", "Video Updates", "PDF Updates", "MCQs",
     "Practice Sets", "Literary Theories & Movements", "Literary Devices",
-    "Advance Grammar", "Old Papers (Year-wise)", "TGT/PGT/LT/GIC Specifics", "Self Assessment"
+    "Advanced Grammar", "Old Papers (Year-wise)", "TGT/PGT/LT/GIC Specifics", "Self Assessment"
 )
 
 private data class PricePlan(val name: String, val amount: String)
