@@ -36,7 +36,11 @@ data class CoverContent(
 )
 
 @Composable
-fun CoverScreen(onProgressClick: () -> Unit = {}) {
+fun CoverScreen(
+    onProgressClick: () -> Unit = {},
+    onRegisterClick: () -> Unit = {},
+    onWatchDemoClick: () -> Unit = {}
+) {
     var content by remember { mutableStateOf(CoverContent()) }
     var loaded by remember { mutableStateOf(false) }
 
@@ -139,14 +143,14 @@ fun CoverScreen(onProgressClick: () -> Unit = {}) {
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(
-                    onClick = {},
+                    onClick = onRegisterClick,
                     colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = NavyDeepC),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f)
                 ) { Text("Register Now", fontWeight = FontWeight.Bold, fontSize = 12.5.sp) }
 
                 OutlinedButton(
-                    onClick = {},
+                    onClick = onWatchDemoClick,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
                     shape = RoundedCornerShape(12.dp),
