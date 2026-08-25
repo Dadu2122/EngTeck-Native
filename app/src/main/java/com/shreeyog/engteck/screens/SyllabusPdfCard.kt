@@ -27,9 +27,9 @@ private val SYLLABUS_ITEMS = listOf(
     "Literary theories",
     "Literary devices",
     "Figures of Speech",
-    "Daily 50 MCQ (Grammar)",
-    "Daily one practice set (50 Q — theories, devices & figures)",
-    "Daily one set of 50 Q (Literature)",
+    "Daily one set of 50-Q (Grammar)",
+    "Daily one set of 50-Q (Term/Device/Theory/Age/Movement)",
+    "Daily one set of 50-Q (Literature)",
     "125 Question-set every Tuesday and Friday (All topics)"
 )
 
