@@ -21,16 +21,16 @@ import androidx.compose.ui.unit.sp
 
 private val SYLLABUS_ITEMS = listOf(
     "Writers and their personal details",
-    "All important works details",
+    "Details of all important works",
     "Work-wise important notes",
-    "All Advance Grammar rules/notes",
+    "All Advanced Grammar rules/notes",
     "Literary theories",
     "Literary devices",
     "Figures of Speech",
-    "Daily one set of 50-Q (Grammar)",
-    "Daily one set of 50-Q (Term/Device/Theory/Age/Movement)",
-    "Daily one set of 50-Q (Literature)",
-    "125 Question-set every Tuesday and Friday (All topics)"
+    "Daily 50-Question Set (Grammar)",
+    "Daily 50-Question Set (Term/Device/Theory/Age/Movement)",
+    "Daily 50-Question Set (Literature)",
+    "125-Question Set every Tuesday and Friday (All Topics)"
 )
 
 private data class SyllabusPlan(val name: String, val amount: String, val borderColor: Color, val textColor: Color)
@@ -136,13 +136,10 @@ fun SyllabusPdfCard() {
         }
 
         Spacer(Modifier.height(6.dp))
-        Text(
-            "✨ Every Saturday Live Test ✨",
+        BlinkingText(
+            "✨ Every Saturday and Sunday Live Test ✨",
             color = Color(0xFFD4A017),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center
+            fontSize = 12.sp
         )
     }
 }
