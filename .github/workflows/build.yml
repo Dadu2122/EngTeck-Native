@@ -29,6 +29,10 @@ jobs:
         # every run instead of being committed directly.
         run: base64 -d app/debug.keystore.base64 > app/debug.keystore
 
+      - name: Print SHA256 fingerprint
+        run: |
+          keytool -list -v -keystore app/debug.keystore -storepass android -alias androiddebugkey | grep "SHA256:"
+
       - name: Build debug APK
         run: gradle assembleDebug
 
