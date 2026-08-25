@@ -22,6 +22,13 @@ jobs:
         with:
           gradle-version: 8.7
 
+      - name: Decode debug keystore
+        # The committed keystore is base64 TEXT (app/debug.keystore.base64) â€”
+        # phone-browser uploads can silently corrupt raw binary files, so the
+        # actual binary debug.keystore Gradle needs is rebuilt fresh here on
+        # every run instead of being committed directly.
+        run: base64 -d app/debug.keystore.base64 > app/debug.keystore
+
       - name: Build debug APK
         run: gradle assembleDebug
 
