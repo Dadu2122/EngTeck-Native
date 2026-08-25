@@ -63,8 +63,18 @@ fun AnnotationCanvas(
     var moveLast by remember { mutableStateOf(Offset.Zero) }
     var pointerPos by remember { mutableStateOf<Offset?>(null) }
 
+    // POINTER tool with swipeEnabled=false (e.g. My Script's own annotation
+    // layer, which sits as a SIBLING next to a separately-scrollable text box
+    // rather than inside a page-level scroll) never draws anything and never
+    // needs to consume touch. Previously it still attached a full gesture
+    // listener anyway — a second, redundant touch tracker running alongside
+    // the sibling scroll box's own drag detector, which is what silently
+    // blocked that scroll from working. Skipping the listener entirely here
+    // lets touch go straight to the scroll box underneath.
+    val needsGestureListener = tool != AnnotationTool.POINTER || swipeEnabled
+
     Canvas(
-        modifier = modifier.pointerInput(tool, color, penWidth, swipeEnabled) {
+        modifier = if (!needsGestureListener) modifier else modifier.pointerInput(tool, color, penWidth, swipeEnabled) {
             // Single gesture handler for everything: 1 finger drives the selected
             // tool, 2+ fingers drive pinch-zoom/pan. Only one detector exists for
             // this whole canvas, so there is nothing for it to conflict with.
