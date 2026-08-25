@@ -1,5 +1,11 @@
 package com.shreeyog.engteck.screens
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -9,8 +15,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -170,13 +178,35 @@ fun PricingCard() {
         }
 
         Spacer(Modifier.height(6.dp))
-        Text(
+        BlinkingText(
             "✨ Discount Applicable ✨",
             color = Color(0xFFD4A017),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            fontSize = 12.sp
         )
     }
+}
+
+// Pulsing opacity to draw the eye — used for the two attention-grabbing
+// lines at the bottom of the pricing cards (Discount / Live Test). Not
+// private — reused by SyllabusPdfCard.kt in the same package.
+@Composable
+fun BlinkingText(text: String, color: Color, fontSize: androidx.compose.ui.unit.TextUnit) {
+    val infiniteTransition = rememberInfiniteTransition(label = "pricingBlink")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.35f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 700, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pricingBlinkAlpha"
+    )
+    Text(
+        text,
+        color = color,
+        fontSize = fontSize,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.fillMaxWidth().alpha(alpha),
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+    )
 }
