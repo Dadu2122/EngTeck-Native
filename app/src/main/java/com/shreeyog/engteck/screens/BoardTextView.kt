@@ -139,10 +139,12 @@ fun BoardPastedTextView(pastedText: String, modifier: Modifier = Modifier, textC
         }
     }
 
-    // verticalScroll is what was missing — without it, text taller than the
-    // board's fixed-height frame simply gets clipped top/bottom with no way
-    // to reach the rest. This makes the block scrollable in place.
-    Column(modifier = modifier.verticalScroll(rememberScrollState())) {
+    // NOTE: the caller (the board's PASTE_TEXT branch in AdminLiveClassCard.kt)
+    // already wraps the modifier it passes in with .verticalScroll(...) — so
+    // this Column must NOT add a second one. Two nested verticalScroll
+    // modifiers on the same content crashes with "Vertically scrollable
+    // component was measured with an infinity maximum height constraints."
+    Column(modifier = modifier) {
         if (blocks.isEmpty()) {
             Text("Paste text below to show it here.", fontSize = 15.sp, color = textColor)
         } else {
