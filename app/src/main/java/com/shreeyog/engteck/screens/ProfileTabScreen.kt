@@ -1,13 +1,19 @@
 package com.shreeyog.engteck.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -80,11 +86,39 @@ fun ProfileTabScreen() {
 
 @Composable
 private fun AdminPanelScreen(teacherKey: String, teacherName: String) {
+    // When true, the rest of the Admin Panel (every other accordion section)
+    // is not composed at all — only the Live Class Control card is on screen.
+    // This is what keeps scrolling confined to just the board/tools while a
+    // class is running, instead of scrolling through the whole panel list.
+    var liveClassOpen by remember { mutableStateOf(false) }
+
+    if (liveClassOpen) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+        ) {
+            TextButton(
+                onClick = { liveClassOpen = false },
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            ) { Text("‹ Back to Admin Panel") }
+
+            AdminLiveClassCard(
+                teacherKey = teacherKey,
+                teacherName = teacherName,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        return
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(vertical = 16.dp)
+            .navigationBarsPadding()
+            .imePadding()
     ) {
         Text("Admin Panel", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D), modifier = Modifier.padding(horizontal = 16.dp))
         Spacer(Modifier.height(16.dp))
@@ -93,9 +127,24 @@ private fun AdminPanelScreen(teacherKey: String, teacherName: String) {
         Spacer(Modifier.height(10.dp))
         Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Teacher Profile Card", "🧑‍🏫") { AdminTeacherProfileCard() } }
         Spacer(Modifier.height(10.dp))
-        // No horizontal padding here on purpose — this is the section that needs to
-        // bleed to the real screen edges, so it's never constrained in the first place.
-        AdminAccordionSection("Live Class Control", "🔴", fullBleedContent = true) { AdminLiveClassCard(teacherKey = teacherKey, teacherName = teacherName) }
+        // Tapping this now switches into the isolated full-screen Live Class
+        // view above instead of expanding inline — see liveClassOpen.
+        Box(Modifier.padding(horizontal = 16.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White, RoundedCornerShape(16.dp))
+                    .border(1.dp, Color(0xFFE3DFD3), RoundedCornerShape(16.dp))
+                    .clickable { liveClassOpen = true }
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🔴 Live Class Control", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12203D))
+                Text("▶ Open", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1B6B79))
+            }
+        }
         Spacer(Modifier.height(10.dp))
         Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Live Class — Teachers", "👥") { AdminTeachersCard() } }
         Spacer(Modifier.height(10.dp))
@@ -124,7 +173,7 @@ private fun AdminPanelScreen(teacherKey: String, teacherName: String) {
         Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Special Note Books", "📕") { AdminMiniBookUploadCard() } }
         Spacer(Modifier.height(10.dp))
         Box(Modifier.padding(horizontal = 16.dp)) { AdminAccordionSection("Data Viewer", "📊") { AdminDataViewersCard() } }
-        Spacer(Modifier.height(30.dp))
+        Spacer(Modifier.height(80.dp))
     }
 }
 
