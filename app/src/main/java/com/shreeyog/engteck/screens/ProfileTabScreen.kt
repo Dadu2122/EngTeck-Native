@@ -31,13 +31,24 @@ fun ProfileTabScreen(onHideBottomNav: (Boolean) -> Unit = {}) {
 
     when {
         isAdmin -> {
+            var hideLogoutRow by remember { mutableStateOf(false) }
             Column(Modifier.fillMaxSize()) {
-                TextButton(
-                    onClick = { isAdmin = false },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                    modifier = Modifier.height(30.dp)
-                ) { Text("‹ Logout", fontSize = 12.sp) }
-                AdminPanelScreen(teacherKey = adminTeacherKey, teacherName = adminName, onHideBottomNav = onHideBottomNav)
+                if (!hideLogoutRow) {
+                    Text(
+                        "‹ Logout",
+                        fontSize = 12.sp,
+                        color = Color(0xFF12203D),
+                        modifier = Modifier
+                            .clickable { isAdmin = false }
+                            .padding(horizontal = 14.dp, vertical = 4.dp)
+                    )
+                }
+                AdminPanelScreen(
+                    teacherKey = adminTeacherKey,
+                    teacherName = adminName,
+                    onHideBottomNav = onHideBottomNav,
+                    onHideLogoutRow = { hideLogoutRow = it }
+                )
             }
         }
         showAdminLogin -> {
@@ -89,20 +100,33 @@ fun ProfileTabScreen(onHideBottomNav: (Boolean) -> Unit = {}) {
 }
 
 @Composable
-private fun AdminPanelScreen(teacherKey: String, teacherName: String, onHideBottomNav: (Boolean) -> Unit) {
+private fun AdminPanelScreen(
+    teacherKey: String,
+    teacherName: String,
+    onHideBottomNav: (Boolean) -> Unit,
+    onHideLogoutRow: (Boolean) -> Unit = {}
+) {
     // When true, the rest of the Admin Panel (every other accordion section)
     // is not composed at all — only the Live Class Control card is on screen.
     // This is what keeps scrolling confined to just the board/tools while a
     // class is running, instead of scrolling through the whole panel list.
     var liveClassOpen by remember { mutableStateOf(false) }
 
-    // Hides the app's own bottom nav bar (Home/Study/Live/Quiz/Profile)
-    // whenever the live class board is open, and restores it the moment
-    // liveClassOpen flips back — covers the Back button. The DisposableEffect
-    // is a safety net for leaving this screen any other way (e.g. Logout),
-    // so the nav bar never stays hidden by mistake.
-    LaunchedEffect(liveClassOpen) { onHideBottomNav(liveClassOpen) }
-    DisposableEffect(Unit) { onDispose { onHideBottomNav(false) } }
+    // Hides the app's own bottom nav bar AND the outer "‹ Logout" row
+    // whenever the live class board is open — both flip back the moment
+    // liveClassOpen does (covers the Back button), freeing every bit of
+    // header space for the board. DisposableEffect is a safety net for
+    // leaving this screen any other way, so neither stays hidden by mistake.
+    LaunchedEffect(liveClassOpen) {
+        onHideBottomNav(liveClassOpen)
+        onHideLogoutRow(liveClassOpen)
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            onHideBottomNav(false)
+            onHideLogoutRow(false)
+        }
+    }
 
     if (liveClassOpen) {
         Column(
@@ -114,11 +138,14 @@ private fun AdminPanelScreen(teacherKey: String, teacherName: String, onHideBott
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
-                TextButton(
-                    onClick = { liveClassOpen = false },
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                    modifier = Modifier.height(28.dp)
-                ) { Text("‹ Back to Admin Panel", fontSize = 12.sp) }
+                Text(
+                    "‹ Back to Admin Panel",
+                    fontSize = 11.sp,
+                    color = Color(0xFF12203D),
+                    modifier = Modifier
+                        .clickable { liveClassOpen = false }
+                        .padding(horizontal = 14.dp, vertical = 2.dp)
+                )
             }
 
             AdminLiveClassCard(
@@ -241,4 +268,3 @@ private fun AdminSelectedAspirantsVisibilityCard() {
         }
     }
 }
-
