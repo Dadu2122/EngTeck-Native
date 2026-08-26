@@ -32,7 +32,11 @@ fun ProfileTabScreen() {
     when {
         isAdmin -> {
             Column(Modifier.fillMaxSize()) {
-                TextButton(onClick = { isAdmin = false }) { Text("‹ Logout") }
+                TextButton(
+                    onClick = { isAdmin = false },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                    modifier = Modifier.height(30.dp)
+                ) { Text("‹ Logout", fontSize = 12.sp) }
                 AdminPanelScreen(teacherKey = adminTeacherKey, teacherName = adminName)
             }
         }
@@ -98,10 +102,16 @@ private fun AdminPanelScreen(teacherKey: String, teacherName: String) {
                 .fillMaxSize()
                 .navigationBarsPadding()
         ) {
-            TextButton(
-                onClick = { liveClassOpen = false },
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-            ) { Text("‹ Back to Admin Panel") }
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                TextButton(
+                    onClick = { liveClassOpen = false },
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                    modifier = Modifier.height(28.dp)
+                ) { Text("‹ Back to Admin Panel", fontSize = 12.sp) }
+            }
 
             AdminLiveClassCard(
                 teacherKey = teacherKey,
