@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.sp
 import com.google.firebase.database.FirebaseDatabase
 
 @Composable
-fun ProfileTabScreen() {
+fun ProfileTabScreen(onHideBottomNav: (Boolean) -> Unit = {}) {
     var showAdminLogin by remember { mutableStateOf(false) }
     var isAdmin by remember { mutableStateOf(false) }
     var adminName by remember { mutableStateOf("") }
@@ -37,7 +37,7 @@ fun ProfileTabScreen() {
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                     modifier = Modifier.height(30.dp)
                 ) { Text("‹ Logout", fontSize = 12.sp) }
-                AdminPanelScreen(teacherKey = adminTeacherKey, teacherName = adminName)
+                AdminPanelScreen(teacherKey = adminTeacherKey, teacherName = adminName, onHideBottomNav = onHideBottomNav)
             }
         }
         showAdminLogin -> {
@@ -89,12 +89,20 @@ fun ProfileTabScreen() {
 }
 
 @Composable
-private fun AdminPanelScreen(teacherKey: String, teacherName: String) {
+private fun AdminPanelScreen(teacherKey: String, teacherName: String, onHideBottomNav: (Boolean) -> Unit) {
     // When true, the rest of the Admin Panel (every other accordion section)
     // is not composed at all — only the Live Class Control card is on screen.
     // This is what keeps scrolling confined to just the board/tools while a
     // class is running, instead of scrolling through the whole panel list.
     var liveClassOpen by remember { mutableStateOf(false) }
+
+    // Hides the app's own bottom nav bar (Home/Study/Live/Quiz/Profile)
+    // whenever the live class board is open, and restores it the moment
+    // liveClassOpen flips back — covers the Back button. The DisposableEffect
+    // is a safety net for leaving this screen any other way (e.g. Logout),
+    // so the nav bar never stays hidden by mistake.
+    LaunchedEffect(liveClassOpen) { onHideBottomNav(liveClassOpen) }
+    DisposableEffect(Unit) { onDispose { onHideBottomNav(false) } }
 
     if (liveClassOpen) {
         Column(
@@ -233,3 +241,4 @@ private fun AdminSelectedAspirantsVisibilityCard() {
         }
     }
 }
+
