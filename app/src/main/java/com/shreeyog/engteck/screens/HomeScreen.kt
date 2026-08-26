@@ -38,24 +38,31 @@ fun HomeScreen(
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
+    // Toggled by ProfileTabScreen (via AdminPanelScreen) while the Live
+    // Class board is open — gives that screen the full height instead of
+    // sharing it with this bar.
+    var hideBottomNav by remember { mutableStateOf(false) }
+
     Scaffold(
         containerColor = Paper,
         bottomBar = {
-            NavigationBar(containerColor = androidx.compose.ui.graphics.Color.White) {
-                tabs.forEachIndexed { index, tab ->
-                    NavigationBarItem(
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
-                        icon = { Icon(tab.icon, contentDescription = tab.label) },
-                        label = { Text(tab.label, fontSize = 11.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = NavyDeep,
-                            selectedTextColor = NavyDeep,
-                            indicatorColor = Gold.copy(alpha = 0.25f),
-                            unselectedIconColor = InkSoft,
-                            unselectedTextColor = InkSoft
+            if (!hideBottomNav) {
+                NavigationBar(containerColor = androidx.compose.ui.graphics.Color.White) {
+                    tabs.forEachIndexed { index, tab ->
+                        NavigationBarItem(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            icon = { Icon(tab.icon, contentDescription = tab.label) },
+                            label = { Text(tab.label, fontSize = 11.sp) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyDeep,
+                                selectedTextColor = NavyDeep,
+                                indicatorColor = Gold.copy(alpha = 0.25f),
+                                unselectedIconColor = InkSoft,
+                                unselectedTextColor = InkSoft
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
@@ -158,7 +165,7 @@ fun HomeScreen(
                         LiveClassJoinCard()
                     }
                     4 -> Box(Modifier.fillMaxSize()) {
-                        ProfileTabScreen()
+                        ProfileTabScreen(onHideBottomNav = { hideBottomNav = it })
                     }
                     else -> Box(Modifier.fillMaxSize().padding(20.dp)) {
                         PlaceholderTab(tabs[selectedTab].label)
